@@ -118,31 +118,57 @@ export default function AIPromptEditor() {
         Alterações são aplicadas imediatamente após publicar — todas as novas conversas usarão o prompt atualizado.
       </div>
 
-      <div style={{ position: 'relative' }}>
-        <textarea
-          value={draft}
-          onChange={e => handleChange(e.target.value)}
-          style={{
-            width: '100%',
-            minHeight: 600,
-            padding: '16px',
-            border: `2px solid ${hasChanges ? '#0D3B8C' : '#E2E8F0'}`,
-            borderRadius: 12,
-            fontSize: 13,
-            fontFamily: "'Courier New', Courier, monospace",
-            lineHeight: 1.6,
-            outline: 'none',
-            resize: 'vertical',
-            boxSizing: 'border-box',
-            color: '#1E293B',
-            background: '#FAFAFA',
-          }}
-        />
+      {/* Code window */}
+      <div style={{
+        borderRadius: 12, overflow: 'hidden',
+        border: `2px solid ${hasChanges ? '#3B82F6' : '#2D3748'}`,
+        boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+      }}>
+        {/* Title bar */}
         <div style={{
-          position: 'absolute', bottom: 12, right: 16,
-          fontSize: 11, color: '#94A3B8', background: '#FAFAFA', padding: '2px 6px',
+          background: '#1E2433', padding: '10px 16px',
+          display: 'flex', alignItems: 'center', gap: 8,
+          borderBottom: '1px solid #2D3748',
         }}>
-          {charCount.toLocaleString('pt-BR')} chars · {wordCount.toLocaleString('pt-BR')} palavras
+          <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#FF5F57', display: 'inline-block' }} />
+          <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#FEBC2E', display: 'inline-block' }} />
+          <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#28C840', display: 'inline-block' }} />
+          <span style={{ fontSize: 12, color: '#6B7280', marginLeft: 8, fontFamily: 'monospace' }}>
+            system_prompt.txt
+          </span>
+          {hasChanges && (
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#F59E0B', fontWeight: 600 }}>● unsaved</span>
+          )}
+        </div>
+        {/* Editor */}
+        <div style={{ position: 'relative', background: '#0F1117' }}>
+          <textarea
+            value={draft}
+            onChange={e => handleChange(e.target.value)}
+            style={{
+              width: '100%',
+              minHeight: 580,
+              padding: '16px 20px',
+              border: 'none',
+              borderRadius: 0,
+              fontSize: 13,
+              fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Courier New', monospace",
+              lineHeight: 1.75,
+              outline: 'none',
+              resize: 'vertical',
+              boxSizing: 'border-box',
+              color: '#E2E8F0',
+              background: 'transparent',
+              caretColor: '#3B82F6',
+            }}
+          />
+          <div style={{
+            position: 'absolute', bottom: 10, right: 16,
+            fontSize: 11, color: '#4B5563', fontFamily: 'monospace', padding: '2px 6px',
+            background: '#1A1F2E', borderRadius: 4,
+          }}>
+            {charCount.toLocaleString('pt-BR')} chars · {wordCount.toLocaleString('pt-BR')} palavras
+          </div>
         </div>
       </div>
 
