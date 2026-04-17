@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-
-const FAVICON_SRC = 'https://SUA_URL_AQUI/favicon.jpg';
+import faviconSrc from '../assets/favicon.png';
 
 export default function RegisterPage() {
   const [nome, setNome] = useState('');
@@ -18,7 +17,7 @@ export default function RegisterPage() {
     e.preventDefault();
     setError('');
     if (!nome.trim() || !email.trim() || !password.trim()) {
-      setError('Preencha todos os campos obrigatorios.');
+      setError('Preencha todos os campos obrigatórios.');
       return;
     }
     if (password.length < 6) {
@@ -58,7 +57,7 @@ export default function RegisterPage() {
             overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.35)',
             width: 80, height: 80,
           }}>
-            <img src={FAVICON_SRC} alt="BNU" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            <img src={faviconSrc} alt="BNU" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           </div>
           <h1 style={{ fontSize: 28, fontWeight: 900, margin: '0 0 4px', letterSpacing: -0.5 }}>
             Brasileiros no Uruguai
@@ -154,7 +153,7 @@ export default function RegisterPage() {
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="Minimo 6 caracteres"
+                placeholder="Mínimo 6 caracteres"
                 style={{
                   width: '100%', border: '1.5px solid #E2E8F0', borderRadius: 10,
                   padding: '12px 14px', fontSize: 15, outline: 'none', boxSizing: 'border-box',
@@ -187,7 +186,7 @@ export default function RegisterPage() {
                 textDecoration: 'none',
               }}
             >
-              Ja tenho conta
+              Já tenho conta
             </Link>
           </div>
         </div>

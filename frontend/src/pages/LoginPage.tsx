@@ -69,6 +69,10 @@ export default function LoginPage() {
           <h1 style={{ fontSize: 28, fontWeight: 900, margin: '0 0 4px', letterSpacing: -0.5 }}>
             Brasileiros no Uruguai
           </h1>
+          <a href="https://brasileirosnouruguai.com.br/" target="_blank" rel="noopener noreferrer"
+            style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: 6, textDecoration: 'none' }}>
+            brasileirosnouruguai.com.br
+          </a>
           <p style={{ fontSize: 13, opacity: 0.6, letterSpacing: 2, textTransform: 'uppercase', margin: 0 }}>
             Planejador de Roteiros
           </p>

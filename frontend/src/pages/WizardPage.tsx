@@ -5,7 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useDebounce } from '../hooks/useDebounce';
 import type { WizardAnswers, City, Tour, HotelStyle, TravelProfile, BudgetRange } from '../types/database';
 
-const FAVICON_SRC = 'https://SUA_URL_AQUI/favicon.jpg';
+import faviconSrc from '../assets/favicon.png';
+const FAVICON_SRC = faviconSrc;
 
 // ═══════════════════════════════════════════════════════
 // HELPER COMPONENTS
@@ -53,8 +54,8 @@ function DateRangePicker({ startDate, endDate, onChange }: {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const MONTHS = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-  const DAYS_LABEL = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+  const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const DAYS_LABEL = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   const getDaysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
   const getFirstDay = (y: number, m: number) => new Date(y, m, 1).getDay();
 
@@ -103,7 +104,7 @@ function DateRangePicker({ startDate, endDate, onChange }: {
   for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(viewYear, viewMonth, d));
 
   const nights = s && e ? Math.round((e.getTime() - s.getTime()) / 86400000) : 0;
-  const displayValue = s && e ? `${formatDate(s)}  →  ${formatDate(e)}` : s ? `${formatDate(s)}  →  selecione a volta` : 'Selecione o periodo da viagem';
+  const displayValue = s && e ? `${formatDate(s)}  →  ${formatDate(e)}` : s ? `${formatDate(s)}  →  selecione a volta` : 'Selecione o período da viagem';
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -180,8 +181,8 @@ function SingleDatePicker({ value, onChange, label, placeholder }: {
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const MONTHS = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-  const DAYS_LABEL = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+  const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const DAYS_LABEL = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   const getDays = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
   const getFirst = (y: number, m: number) => new Date(y, m, 1).getDay();
 
@@ -329,19 +330,15 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
       <Input label="Nome completo *" value={answers.nome || ''} onChange={v => update('nome', v)} placeholder="Ex: Ana Lima" />
       <Input label="WhatsApp *" value={answers.whatsapp || ''} onChange={v => update('whatsapp', v)} placeholder="Ex: (11) 99999-9999" />
       <Input label="E-mail *" value={answers.email || ''} onChange={v => update('email', v)} placeholder="seu@email.com" type="email" />
-      <div style={{ position: 'relative', background: 'linear-gradient(135deg, #EFF6FF, #F0FDF4)', border: '1.5px solid #BFDBFE', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, animation: 'pulseHint 2.5s ease-in-out infinite' }}>
+      <div style={{ background: 'linear-gradient(135deg, #EFF6FF, #F0FDF4)', border: '1.5px solid #BFDBFE', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, animation: 'pulseHint 2.5s ease-in-out infinite' }}>
         <div style={{ fontSize: 22, flexShrink: 0 }}>💬</div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: '#0D3B8C', marginBottom: 2 }}>Duvidas? Fale com o Rodrigo!</div>
-          <div style={{ fontSize: 12, color: '#334155', lineHeight: 1.5 }}>Clique no botao de chat no canto da tela para tirar qualquer duvida na hora.</div>
-        </div>
-        <div style={{ position: 'absolute', right: 70, bottom: -28, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-          <div style={{ fontSize: 20, animation: 'bounceArrow 1s ease-in-out infinite' }}>↘</div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#0D3B8C', marginBottom: 2 }}>Dúvidas? Fale com o Rodrigo!</div>
+          <div style={{ fontSize: 12, color: '#334155', lineHeight: 1.5 }}>Clique no botão de chat no canto da tela para tirar qualquer dúvida na hora.</div>
         </div>
       </div>
       <style>{`
         @keyframes pulseHint { 0%,100%{box-shadow:0 0 0 0 rgba(13,59,140,0.15)} 50%{box-shadow:0 0 0 8px rgba(13,59,140,0)} }
-        @keyframes bounceArrow { 0%,100%{transform:translateY(0)} 50%{transform:translateY(4px)} }
       `}</style>
     </div>
   );
@@ -362,11 +359,11 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <NumberInput label="Adultos *" value={answers.adultos || 1} onChange={v => update('adultos', v)} min={1} max={50} />
-        <NumberInput label="Criancas (ate 11 anos)" value={answers.criancas || 0} onChange={v => update('criancas', v)} min={0} max={20} />
+        <NumberInput label="Crianças (até 11 anos)" value={answers.criancas || 0} onChange={v => update('criancas', v)} min={0} max={20} />
       </div>
       {(answers.criancas || 0) > 0 && (
         <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 12, padding: 12, fontSize: 13 }}>
-          Criancas ate 12 anos nao pagam ingresso na Casapueblo. Ha passeios especialmente indicados para familias.
+          Crianças até 12 anos não pagam ingresso na Casapueblo. Há passeios especialmente indicados para famílias.
         </div>
       )}
     </div>
@@ -378,7 +375,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
         {['Tenho datas definidas', 'Ainda nao definidas'].map(opt => (
           <button key={opt} onClick={() => { update('datas_definidas', opt === 'Tenho datas definidas'); if (opt !== 'Tenho datas definidas' && !answers.dias_total) update('dias_total', 5); }}
             style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: `2px solid ${answers.datas_definidas === (opt === 'Tenho datas definidas') ? '#0D3B8C' : '#E2E8F0'}`, background: answers.datas_definidas === (opt === 'Tenho datas definidas') ? '#EFF6FF' : 'white', cursor: 'pointer', fontWeight: 600, fontSize: 14 }}>
-            {opt === 'Tenho datas definidas' ? 'Tenho as datas' : 'Ainda nao sei'}
+            {opt === 'Tenho datas definidas' ? 'Tenho as datas' : 'Ainda não sei'}
           </button>
         ))}
       </div>
@@ -424,18 +421,18 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
           <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 14 }}>
             <span>Total da viagem: <strong>{totalTripNights} noites</strong></span>
             <span style={{ color: remainingNights === 0 ? '#1B6E3C' : (remainingNights !== null && remainingNights < 0) ? '#DC2626' : '#0D3B8C', fontWeight: 700 }}>
-              {remainingNights !== null && remainingNights >= 0 ? `${remainingNights} noite${remainingNights !== 1 ? 's' : ''} disponivel${remainingNights !== 1 ? 'is' : ''}` : remainingNights !== null ? `${Math.abs(remainingNights)} noite${Math.abs(remainingNights) !== 1 ? 's' : ''} a mais` : ''}
+              {remainingNights !== null && remainingNights >= 0 ? `${remainingNights} noite${remainingNights !== 1 ? 's' : ''} disponível${remainingNights !== 1 ? 'is' : ''}` : remainingNights !== null ? `${Math.abs(remainingNights)} noite${Math.abs(remainingNights) !== 1 ? 's' : ''} a mais` : ''}
             </span>
           </div>
         )}
         {remainingNights !== null && remainingNights < 0 && (
           <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 10, padding: '8px 14px', fontSize: 13, color: '#DC2626' }}>
-            Voce selecionou mais noites do que o total da viagem. Ajuste os valores abaixo.
+            Você selecionou mais noites do que o total da viagem. Ajuste os valores abaixo.
           </div>
         )}
         <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#92400E', lineHeight: 1.6, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <span style={{ fontSize: 18, flexShrink: 0 }}>💡</span>
-          <span>Lembrete: Se hospedar em mais de uma cidade em um periodo curto de viagem pode ser cansativo, alem de aumentar o orcamento da viagem devido aos transfers para se locomover entre cidades.</span>
+          <span>Lembrete: Se hospedar em mais de uma cidade em um período curto de viagem pode ser cansativo, além de aumentar o orçamento da viagem devido aos transfers para se locomover entre cidades.</span>
         </div>
         <p style={{ fontSize: 13, color: '#64748B' }}>Selecione as cidades e informe quantas noites em cada uma:</p>
         {cities.map(c => (
@@ -490,14 +487,14 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
   if (stepId === 7) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12 }}>
-        {['Ja tenho hotel em mente', 'Quero sugestoes de hoteis'].map(opt => (
+        {['Já tenho hotel em mente', 'Quero sugestões de hotéis'].map(opt => (
           <button key={opt} onClick={() => update('hotel_opcao', opt)}
             style={{ flex: 1, padding: '14px 12px', borderRadius: 12, border: `2px solid ${answers.hotel_opcao === opt ? '#0D3B8C' : '#E2E8F0'}`, background: answers.hotel_opcao === opt ? '#EFF6FF' : 'white', cursor: 'pointer', fontWeight: 600, fontSize: 13, lineHeight: 1.4 }}>
-            {opt === 'Ja tenho hotel em mente' ? 'Ja tenho hotel em mente' : 'Quero sugestoes de hoteis'}
+            {opt === 'Já tenho hotel em mente' ? 'Já tenho hotel em mente' : 'Quero sugestões de hotéis'}
           </button>
         ))}
       </div>
-      {answers.hotel_opcao === 'Ja tenho hotel em mente' && (
+      {answers.hotel_opcao === 'Já tenho hotel em mente' && (
         <Input label="Qual hotel(is)?" value={answers.hotel_nome || ''} onChange={v => update('hotel_nome', v)} placeholder="Ex: Cottage Hotel, Sofitel..." />
       )}
     </div>
@@ -525,6 +522,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
                 <div style={{ fontWeight: 700, fontSize: 12, lineHeight: 1.3, color: '#0F172A' }}>{p.emoji} {p.nome}</div>
                 <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>{p.description}</div>
                 <div style={{ fontSize: 13, color: '#1B6E3C', fontWeight: 700, marginTop: 4 }}>R$ {p.valor_por_pessoa}/pessoa</div>
+
               </div>
             </div>
           );
@@ -532,7 +530,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
       </div>
       {(answers.passeios || []).length > 2 && (
         <div style={{ background: '#F0FDF4', border: '1px solid #22C55E', borderRadius: 10, padding: 10, marginTop: 12, fontSize: 13, color: '#166534' }}>
-          Com {(answers.passeios || []).length} passeios, voce pode ter direito a desconto especial!
+          Com {(answers.passeios || []).length} passeios, você pode ter direito a desconto especial!
         </div>
       )}
     </div>
@@ -541,16 +539,16 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
   if (stepId === 9) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12 }}>
-        {['Sim, tenho algo para comemorar!', 'Nao, e uma viagem normal'].map(opt => (
+        {['Sim, tenho algo para comemorar!', 'Não, é uma viagem normal'].map(opt => (
           <button key={opt} onClick={() => update('ocasiao_especial', opt)}
             style={{ flex: 1, padding: '14px 12px', borderRadius: 12, border: `2px solid ${answers.ocasiao_especial === opt ? '#0D3B8C' : '#E2E8F0'}`, background: answers.ocasiao_especial === opt ? '#EFF6FF' : 'white', cursor: 'pointer', fontWeight: 600, fontSize: 13, lineHeight: 1.4 }}>
-            {opt.startsWith('Sim') ? 'Sim, vou comemorar!' : 'Nao, viagem normal'}
+            {opt.startsWith('Sim') ? 'Sim, vou comemorar!' : 'Não, viagem normal'}
           </button>
         ))}
       </div>
       {answers.ocasiao_especial?.startsWith('Sim') && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Input label="Qual e a ocasiao especial?" value={answers.ocasiao_detalhe || ''} onChange={v => update('ocasiao_detalhe', v)} placeholder="Ex: aniversario de 50 anos, pedido de casamento, lua de mel..." />
+          <Input label="Qual é a ocasião especial?" value={answers.ocasiao_detalhe || ''} onChange={v => update('ocasiao_detalhe', v)} placeholder="Ex: aniversário de 50 anos, pedido de casamento, lua de mel..." />
           <SingleDatePicker label="Data da ocasiao" value={answers.ocasiao_data || ''} onChange={v => update('ocasiao_data', v)} placeholder="Selecione a data" />
         </div>
       )}
@@ -559,7 +557,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
 
   if (stepId === 10) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <p style={{ fontSize: 13, color: '#64748B', marginBottom: 4 }}>Uma estimativa nos ajuda a montar a proposta ideal para voce.</p>
+      <p style={{ fontSize: 13, color: '#64748B', marginBottom: 4 }}>Uma estimativa nos ajuda a montar a proposta ideal para você.</p>
       {budgetRanges.map(o => (
         <button key={o.id} onClick={() => update('orcamento', o.label)}
           style={{ padding: '14px 18px', borderRadius: 12, border: `2px solid ${answers.orcamento === o.label ? '#0D3B8C' : '#E2E8F0'}`, background: answers.orcamento === o.label ? '#EFF6FF' : 'white', cursor: 'pointer', fontWeight: answers.orcamento === o.label ? 700 : 500, fontSize: 14, textAlign: 'left', color: answers.orcamento === o.label ? '#0D3B8C' : '#334155' }}>
@@ -573,7 +571,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     <div>
       <label style={{ fontSize: 14, fontWeight: 600, color: '#334155', display: 'block', marginBottom: 8 }}>Algum detalhe importante sobre a sua viagem?</label>
       <textarea value={answers.extras || ''} onChange={e => update('extras', e.target.value)}
-        placeholder="Ex: tenho restricao alimentar, prefiro passeios tranquilos, viajamos com pessoa com mobilidade reduzida, quero visitar vinicolas..."
+        placeholder="Ex: tenho restrição alimentar, prefiro passeios tranquilos, viajamos com pessoa com mobilidade reduzida, quero visitar vinícolas..."
         style={{ width: '100%', minHeight: 120, border: '1.5px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', fontSize: 14, lineHeight: 1.6, resize: 'vertical', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
     </div>
   );
@@ -586,17 +584,17 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
 // ═══════════════════════════════════════════════════════
 
 const STEP_CONFIG = [
-  { title: 'Vamos comecar?', sub: 'Nos informe quem e voce' },
-  { title: 'Perfil da viagem', sub: 'Como sera o grupo?' },
-  { title: 'Tamanho do grupo', sub: 'Quantos vao viajar?' },
-  { title: 'Quando viaja?', sub: 'Datas ou duracao planejada' },
+  { title: 'Vamos começar?', sub: 'Nos informe quem é você' },
+  { title: 'Perfil da viagem', sub: 'Como será o grupo?' },
+  { title: 'Tamanho do grupo', sub: 'Quantos vão viajar?' },
+  { title: 'Quando viaja?', sub: 'Datas ou duração planejada' },
   { title: 'Cidades do roteiro', sub: 'Quais cidades incluir?' },
-  { title: 'Estilo de hospedagem', sub: 'Nivel de conforto desejado' },
-  { title: 'Preferencia de hotel', sub: 'Hotel ja definido ou quer sugestoes?' },
-  { title: 'Passeios e Experiencias', sub: 'O que voce quer fazer no Uruguai?' },
-  { title: 'Vai comemorar uma data especial?', sub: 'Informe qual e a ocasiao e a data' },
-  { title: 'Orcamento', sub: 'Faixa de investimento' },
-  { title: 'Informacoes adicionais', sub: 'Algum detalhe importante?' },
+  { title: 'Estilo de hospedagem', sub: 'Nível de conforto desejado' },
+  { title: 'Preferência de hotel', sub: 'Já definido ou quer sugestões?' },
+  { title: 'Passeios e Experiências', sub: 'O que você quer fazer no Uruguai?' },
+  { title: 'Vai comemorar uma data especial?', sub: 'Informe qual é a ocasião e a data' },
+  { title: 'Orçamento', sub: 'Faixa de investimento' },
+  { title: 'Informações adicionais', sub: 'Algum detalhe importante?' },
 ];
 
 // ═══════════════════════════════════════════════════════
@@ -624,7 +622,7 @@ export default function WizardPage() {
   // Chat state
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{ role: string; content: string }[]>([
-    { role: 'assistant', content: 'Ola! Sou o Rodrigo, consultor da Brasileiros no Uruguai.\n\nPode me perguntar qualquer coisa sobre a viagem enquanto preenche o formulario!' }
+    { role: 'assistant', content: 'Olá! Sou o Rodrigo, consultor da Brasileiros no Uruguai.\n\nPode me perguntar qualquer coisa sobre a viagem enquanto preenche o formulário!' }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -722,7 +720,7 @@ export default function WizardPage() {
 
           if (chatData && chatData.length > 0) {
             setChatMessages([
-              { role: 'assistant', content: 'Ola! Sou o Rodrigo, consultor da Brasileiros no Uruguai.\n\nPode me perguntar qualquer coisa sobre a viagem enquanto preenche o formulario!' },
+              { role: 'assistant', content: 'Olá! Sou o Rodrigo, consultor da Brasileiros no Uruguai.\n\nPode me perguntar qualquer coisa sobre a viagem enquanto preenche o formulário!' },
               ...chatData,
             ]);
           }
@@ -811,7 +809,7 @@ export default function WizardPage() {
 
       const assistantContent = error
         ? 'Ops! Problema momentaneo. Tente novamente!'
-        : data?.reply || 'Nao consegui responder agora. Tente novamente!';
+        : data?.reply || 'Não consegui responder agora. Tente novamente!';
 
       setChatMessages(prev => [...prev, { role: 'assistant', content: assistantContent }]);
     } catch (err) {
@@ -881,12 +879,12 @@ export default function WizardPage() {
         <div style={{ textAlign: 'center', padding: '60px 20px' }}>
           <div style={{ fontSize: 56, marginBottom: 16, animation: 'bounce 1.2s ease-in-out infinite' }}>🗺️</div>
           <h2 style={{ color: '#0D3B8C', marginBottom: 10, fontSize: 22 }}>Montando seu roteiro perfeito...</h2>
-          <p style={{ color: '#64748B', fontSize: 15, lineHeight: 1.7 }}>Estamos analisando suas preferencias,<br />calculando o orcamento e preparando tudo com carinho!</p>
+          <p style={{ color: '#64748B', fontSize: 15, lineHeight: 1.7 }}>Estamos analisando suas preferências,<br />calculando o orçamento e preparando tudo com carinho!</p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 24 }}>
             {[0, 1, 2].map(i => <div key={i} style={{ width: 12, height: 12, borderRadius: '50%', background: '#0D3B8C', animation: 'bounce 1s infinite', animationDelay: `${i * 0.3}s` }} />)}
           </div>
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 32, flexWrap: 'wrap' }}>
-            {['🏨 Hospedagem', '🎫 Passeios', '🚗 Transfers', '💰 Orcamento'].map((item, i) => (
+            {['🏨 Hospedagem', '🎫 Passeios', '🚗 Transfers', '💰 Orçamento'].map((item, i) => (
               <div key={i} style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 100, padding: '6px 14px', fontSize: 13, color: '#64748B', animation: `fadeIn 0.5s ease ${i * 0.3}s both` }}>{item}</div>
             ))}
           </div>
@@ -943,7 +941,7 @@ export default function WizardPage() {
         {step < totalSteps - 1
           ? <button onClick={() => canAdvance() && goToStep(step + 1)} disabled={!canAdvance()}
               style={{ flex: 1, padding: '14px', border: 'none', borderRadius: 12, background: canAdvance() ? 'linear-gradient(135deg, #0D3B8C, #1E5CB5)' : '#E2E8F0', cursor: canAdvance() ? 'pointer' : 'not-allowed', fontWeight: 700, fontSize: 15, color: canAdvance() ? 'white' : '#94A3B8', transition: 'all 0.2s' }}>
-              Proximo
+              Próximo
             </button>
           : <button onClick={handleGenerate} style={{ flex: 1, padding: '14px', border: 'none', borderRadius: 12, background: 'linear-gradient(135deg, #1B6E3C, #22C55E)', cursor: 'pointer', fontWeight: 800, fontSize: 16, color: 'white' }}>
               Gerar Meu Roteiro!

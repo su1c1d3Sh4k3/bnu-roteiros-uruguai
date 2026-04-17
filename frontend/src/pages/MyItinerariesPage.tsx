@@ -3,8 +3,6 @@ import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
-const FAVICON_SRC = 'https://SUA_URL_AQUI/favicon.jpg';
-
 interface ItineraryWithAnswers {
   id: string;
   status: 'draft' | 'generated' | 'sent_to_consultant';
@@ -107,10 +105,10 @@ export default function MyItinerariesPage() {
   };
 
   const getCidadesText = (cidades: Record<string, number | string> | null | undefined) => {
-    if (!cidades || Object.keys(cidades).length === 0) return 'Cidades nao definidas';
+    if (!cidades || Object.keys(cidades).length === 0) return 'Cidades não definidas';
     const CITY_NAMES: Record<string, string> = {
-      mvd: 'Montevideo', pde: 'Punta del Este', col: 'Colonia del Sacramento',
-      jose: 'Jose Ignacio', carmelo: 'Carmelo', outro: 'Outro',
+      mvd: 'Montevidéu', pde: 'Punta del Este', col: 'Colonia del Sacramento',
+      jose: 'José Ignácio', carmelo: 'Carmelo', outro: 'Outro',
     };
     return Object.keys(cidades).map(k => CITY_NAMES[k] || k).join(', ');
   };
@@ -124,15 +122,10 @@ export default function MyItinerariesPage() {
         color: 'white',
       }}>
         <div style={{ maxWidth: 700, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.18)', flexShrink: 0 }}>
-              <img src={FAVICON_SRC} alt="BNU" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>Meus Roteiros</div>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>
-                {userNome ? `${userNome.split(' ')[0]}` : 'Brasileiros no Uruguai'}
-              </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 18 }}>Meus Roteiros</div>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>
+              {userNome ? `${userNome.split(' ')[0]}` : 'Brasileiros no Uruguai'}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -140,7 +133,7 @@ export default function MyItinerariesPage() {
               color: 'white', textDecoration: 'none', fontSize: 13, fontWeight: 600,
               background: 'rgba(255,255,255,0.15)', padding: '6px 14px', borderRadius: 8,
             }}>
-              Inicio
+              Início
             </Link>
             <button onClick={logout} style={{
               background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
@@ -248,7 +241,7 @@ export default function MyItinerariesPage() {
                       </div>
                     )}
                   </div>
-                  <div style={{ color: '#0D3B8C', fontSize: 20, marginLeft: 12, flexShrink: 0 }}>→</div>
+                  <div style={{ color: '#0D3B8C', fontSize: 20, marginLeft: 12, flexShrink: 0 }}>›</div>
                 </div>
               );
             })}

@@ -42,7 +42,7 @@ function App() {
             }
           />
           <Route
-            path="/my-itineraries"
+            path="/roteiro-personalizado"
             element={
               <ProtectedRoute>
                 <MyItinerariesPage />

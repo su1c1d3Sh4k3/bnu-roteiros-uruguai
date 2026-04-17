@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-
-const FAVICON_SRC = 'https://SUA_URL_AQUI/favicon.jpg';
+import faviconSrc from '../assets/favicon.png';
 
 export default function WelcomePage() {
   const navigate = useNavigate();
@@ -53,19 +52,11 @@ export default function WelcomePage() {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '12px 24px', position: 'relative', zIndex: 2,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10, overflow: 'hidden',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.18)', flexShrink: 0,
-            }}>
-              <img src={FAVICON_SRC} alt="BNU" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-            </div>
-            <span style={{ fontWeight: 700, fontSize: 14, opacity: 0.9 }}>
-              {userNome ? `Ola, ${userNome.split(' ')[0]}!` : 'BNU'}
-            </span>
-          </div>
+          <span style={{ fontWeight: 700, fontSize: 14, opacity: 0.9 }}>
+            {userNome ? `Olá, ${userNome.split(' ')[0]}!` : 'BNU'}
+          </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Link to="/my-itineraries" style={{
+            <Link to="/roteiro-personalizado" style={{
               color: 'white', textDecoration: 'none', fontSize: 13, fontWeight: 600,
               background: 'rgba(255,255,255,0.15)', padding: '6px 14px', borderRadius: 8,
             }}>
@@ -96,26 +87,30 @@ export default function WelcomePage() {
             overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.35)',
             width: 96, height: 96,
           }}>
-            <img src={FAVICON_SRC} alt="BNU" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            <img src={faviconSrc} alt="BNU" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           </div>
           <h1 style={{ fontSize: 36, fontWeight: 900, margin: '0 0 6px', letterSpacing: -1, lineHeight: 1.1 }}>
             Seu Roteiro Perfeito para o Uruguai
           </h1>
-          <p style={{ fontSize: 13, fontWeight: 400, margin: '0 0 28px', opacity: 0.6, letterSpacing: 2, textTransform: 'uppercase' }}>
+          <p style={{ fontSize: 13, fontWeight: 400, margin: '0 0 4px', opacity: 0.6, letterSpacing: 2, textTransform: 'uppercase' }}>
             Brasileiros no Uruguai
           </p>
+          <a href="https://brasileirosnouruguai.com.br/" target="_blank" rel="noopener noreferrer"
+            style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', display: 'block', marginBottom: 28, textDecoration: 'none' }}>
+            brasileirosnouruguai.com.br
+          </a>
           <div style={{
             background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
             borderRadius: 20, padding: '24px 28px', maxWidth: 480, margin: '0 auto 36px', textAlign: 'left',
           }}>
             <p style={{ fontSize: 16, lineHeight: 1.8, margin: '0 0 12px', opacity: 0.95 }}>
-              Voce acaba de ganhar acesso ao seu planejador de viagem para o Uruguai! 😊
+              Você acaba de ganhar acesso ao seu planejador de viagem para o Uruguai! 😊
             </p>
             <p style={{ fontSize: 15, lineHeight: 1.75, margin: '0 0 12px', opacity: 0.85 }}>
-              🗺️ Este e o seu planejador exclusivo: um especialista dedicado a entender cada detalhe da sua viagem e transformar isso em um roteiro sob medida, com as melhores dicas, os passeios certos para o seu perfil e suporte para cada duvida que surgir.
+              🗺️ Este é o seu planejador exclusivo: um especialista dedicado a entender cada detalhe da sua viagem e transformar isso em um roteiro sob medida, com as melhores dicas, os passeios certos para o seu perfil e suporte para cada dúvida que surgir.
             </p>
             <p style={{ fontSize: 15, lineHeight: 1.75, margin: 0, opacity: 0.95, fontWeight: 600 }}>
-              ✈️ Vamos montar algo incrivel juntos. Vamos comecar?
+              ✈️ Vamos montar algo incrível juntos. Vamos começar?
             </p>
           </div>
           <button
@@ -131,7 +126,7 @@ export default function WelcomePage() {
             onMouseEnter={e => { if (!creating) (e.target as HTMLButtonElement).style.transform = 'scale(1.04)'; }}
             onMouseLeave={e => { (e.target as HTMLButtonElement).style.transform = 'scale(1)'; }}
           >
-            {creating ? 'Criando...' : 'Comecar Meu Roteiro'}
+            {creating ? 'Criando...' : 'Começar Meu Roteiro'}
           </button>
           <p style={{ marginTop: 14, fontSize: 13, opacity: 0.55 }}>Leva apenas 3 minutos</p>
         </div>
@@ -144,8 +139,8 @@ export default function WelcomePage() {
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, marginBottom: 40 }}>
           {([
-            ['📝', 'Responda as perguntas', 'Informe suas preferencias, datas e cidades de interesse'],
-            ['🗺️', 'Receba o roteiro', 'O sistema monta um pre-roteiro com passeios e orcamento'],
+            ['📝', 'Responda as perguntas', 'Informe suas preferências, datas e cidades de interesse'],
+            ['🗺️', 'Receba o roteiro', 'O sistema monta um pré-roteiro com passeios e orçamento'],
             ['📩', 'Fale com a consultora', 'Envie para a Consultora Especialista confirmar e fechar sua reserva'],
           ] as const).map(([emoji, title, desc]) => (
             <div key={title} style={{
@@ -175,10 +170,10 @@ export default function WelcomePage() {
           </div>
           <div>
             <div style={{ fontWeight: 800, fontSize: 16, color: '#0D3B8C', marginBottom: 6 }}>
-              Rodrigo esta aqui para te ajudar!
+              Rodrigo está aqui para te ajudar!
             </div>
             <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.6 }}>
-              Em qualquer etapa do formulario, clique no <strong>botao de chat</strong> no canto da tela para tirar duvidas com o Rodrigo, nosso consultor especialista em roteiros para o Uruguai. Ele responde na hora!
+              Em qualquer etapa do formulário, clique no <strong>botão de chat</strong> no canto da tela para tirar dúvidas com o Rodrigo, nosso consultor especialista em roteiros para o Uruguai. Ele responde na hora!
             </div>
           </div>
         </div>
@@ -194,7 +189,7 @@ export default function WelcomePage() {
               boxShadow: '0 4px 20px rgba(13,59,140,0.3)',
             }}
           >
-            {creating ? 'Criando...' : 'Comecar'}
+            {creating ? 'Criando...' : 'Começar'}
           </button>
         </div>
       </div>

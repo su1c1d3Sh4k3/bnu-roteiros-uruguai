@@ -3,8 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { WizardAnswers, City, TravelProfile } from '../types/database';
+import faviconSrc from '../assets/favicon.png';
 
-const FAVICON_SRC = 'https://SUA_URL_AQUI/favicon.jpg';
+const FAVICON_SRC = faviconSrc;
 
 // ═══════════════════════════════════════════════════════
 // HELPERS
