@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-const FAVICON_SRC = 'https://SUA_URL_AQUI/favicon.jpg';
+const FAVICON_SRC = '/favicon.png';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
