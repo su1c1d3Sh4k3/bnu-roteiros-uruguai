@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-
-const FAVICON_SRC = '/favicon.png';
+import faviconSrc from '../assets/favicon.png';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -54,7 +53,7 @@ export default function LoginPage() {
             overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.35)',
             width: 80, height: 80,
           }}>
-            <img src={FAVICON_SRC} alt="BNU" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            <img src={faviconSrc} alt="BNU" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           </div>
           <h1 style={{ fontSize: 28, fontWeight: 900, margin: '0 0 4px', letterSpacing: -0.5 }}>
             Brasileiros no Uruguai
