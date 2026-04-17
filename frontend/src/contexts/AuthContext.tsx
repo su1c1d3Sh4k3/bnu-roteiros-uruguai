@@ -15,7 +15,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-async function fetchProfile(userId: string) {
+async function fetchProfile(userId: string): Promise<{ nome: string; is_admin: boolean } | null> {
   try {
     const { data } = await supabase
       .from('profiles')
@@ -32,49 +32,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [userNome, setUserNome] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  // loading = true ONLY while we don't know the session state yet
+  // profile fetch is separate and never blocks this
   const [loading, setLoading] = useState(true);
   const loginInProgress = useRef(false);
+  const mounted = useRef(true);
 
   useEffect(() => {
-    let done = false;
+    mounted.current = true;
 
-    // Timeout de segurança: cobre getSession() + fetchProfile()
-    // Se qualquer uma das duas travar, loading vira false em 5s
-    const safetyTimer = setTimeout(() => {
-      if (!done) {
-        done = true;
+    // Max 4 seconds to determine session state.
+    // If getSession() hangs (e.g. token refresh network call), we unblock after 4s.
+    const sessionTimer = setTimeout(() => {
+      if (mounted.current) {
+        console.warn('[Auth] getSession() timeout — clearing session and unblocking');
         supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+        setSession(null);
         setLoading(false);
       }
-    }, 5000);
+    }, 4000);
 
-    const init = async () => {
-      try {
-        const { data: { session: s } } = await supabase.auth.getSession();
-        if (done) return;
+    supabase.auth.getSession()
+      .then(({ data: { session: s } }) => {
+        clearTimeout(sessionTimer);
+        if (!mounted.current) return;
 
+        setSession(s);
+        setLoading(false); // ← unblock routing immediately
+
+        // Load profile in background — never blocks loading
         if (s?.user) {
-          setSession(s);
-          const profile = await fetchProfile(s.user.id);
-          if (!done && profile) {
+          fetchProfile(s.user.id).then(profile => {
+            if (!mounted.current || !profile) return;
             setUserNome(profile.nome ?? '');
             setIsAdmin(profile.is_admin ?? false);
-          }
+          });
         }
-      } catch {
-        // ignora — safetyTimer vai chamar setLoading(false)
-      } finally {
-        if (!done) {
-          done = true;
-          clearTimeout(safetyTimer);
-          setLoading(false);
-        }
-      }
-    };
+      })
+      .catch(() => {
+        clearTimeout(sessionTimer);
+        if (!mounted.current) return;
+        setSession(null);
+        setLoading(false);
+      });
 
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      // Skip SIGNED_IN during manual login — handled by login() directly
       if (event === 'SIGNED_IN' && loginInProgress.current) return;
 
       if (!s) {
@@ -86,18 +89,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setSession(s);
 
-      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-        const profile = await fetchProfile(s.user.id);
-        if (profile) {
+      // Refresh profile on auth state changes (token refresh, etc.)
+      if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        fetchProfile(s.user.id).then(profile => {
+          if (!mounted.current || !profile) return;
           setUserNome(profile.nome ?? '');
           setIsAdmin(profile.is_admin ?? false);
-        }
+        });
       }
     });
 
     return () => {
-      done = true;
-      clearTimeout(safetyTimer);
+      mounted.current = false;
+      clearTimeout(sessionTimer);
       subscription.unsubscribe();
     };
   }, []);
