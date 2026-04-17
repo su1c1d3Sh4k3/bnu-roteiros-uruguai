@@ -3,6 +3,37 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from "../_shared/cors.ts"
 import { KNOWLEDGE } from "../_shared/knowledge.ts"
 
+// Busca o prompt do banco; usa o hardcoded como fallback
+async function getSystemPrompt(supabase: ReturnType<typeof createClient>): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from("ai_prompt_config")
+      .select("system_prompt")
+      .eq("id", 1)
+      .single()
+    if (!error && data?.system_prompt) return data.system_prompt
+  } catch (_) { /* fallback */ }
+  return KNOWLEDGE
+}
+
+// Busca documentos de contexto ativos
+async function getActiveDocuments(supabase: ReturnType<typeof createClient>): Promise<string> {
+  try {
+    const { data } = await supabase
+      .from("ai_documents")
+      .select("name, when_to_use, content_text")
+      .eq("active", true)
+      .neq("content_text", "")
+    if (data && data.length > 0) {
+      return "\n\n═══════════════════════════════════════\nDOCUMENTOS DE CONTEXTO ADICIONAIS:\n═══════════════════════════════════════\n" +
+        data.map((d: { name: string; when_to_use: string; content_text: string }) =>
+          `[${d.name}${d.when_to_use ? ` — usar quando: ${d.when_to_use}` : ""}]\n${d.content_text}`
+        ).join("\n\n")
+    }
+  } catch (_) { /* ignore */ }
+  return ""
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -94,6 +125,13 @@ serve(async (req) => {
       { role: "user", content: message },
     ]
 
+    // --- Fetch dynamic prompt + documents ---
+    const [basePrompt, extraDocs] = await Promise.all([
+      getSystemPrompt(supabase),
+      getActiveDocuments(supabase),
+    ])
+    const systemPrompt = basePrompt + extraDocs
+
     // --- Call OpenAI API (GPT-4.1) ---
     const openaiKey = Deno.env.get("OPENAI_API_KEY")
     if (!openaiKey) {
@@ -113,7 +151,7 @@ serve(async (req) => {
         model: "gpt-4.1",
         max_tokens: 350,
         messages: [
-          { role: "system", content: KNOWLEDGE },
+          { role: "system", content: systemPrompt },
           ...messagesForAI,
         ],
       }),

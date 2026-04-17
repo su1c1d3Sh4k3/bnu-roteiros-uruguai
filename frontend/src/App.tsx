@@ -1,12 +1,14 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import WelcomePage from './pages/WelcomePage';
 import WizardPage from './pages/WizardPage';
 import ResultPage from './pages/ResultPage';
 import MyItinerariesPage from './pages/MyItinerariesPage';
+import AdminPage from './pages/AdminPage';
 
 function App() {
   return (
@@ -45,6 +47,14 @@ function App() {
               <ProtectedRoute>
                 <MyItinerariesPage />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminPage />
+              </AdminRoute>
             }
           />
           <Route path="*" element={<Navigate to="/" replace />} />

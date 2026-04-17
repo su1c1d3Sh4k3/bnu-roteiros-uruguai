@@ -6,6 +6,7 @@ interface AuthContextType {
   session: Session | null;
   user: User | null;
   userNome: string;
+  isAdmin: boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<{ error: string | null }>;
   signup: (email: string, password: string, metadata: { nome: string; whatsapp: string }) => Promise<{ error: string | null }>;
@@ -18,37 +19,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [userNome, setUserNome] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
       setSession(s);
       if (s?.user) {
-        loadUserName(s.user.id);
+        await loadUserProfile(s.user.id);
       }
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
       setSession(s);
       if (s?.user) {
-        loadUserName(s.user.id);
+        await loadUserProfile(s.user.id);
       } else {
         setUserNome('');
+        setIsAdmin(false);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const loadUserName = async (userId: string) => {
+  const loadUserProfile = async (userId: string) => {
     const { data } = await supabase
       .from('profiles')
-      .select('nome')
+      .select('nome, is_admin')
       .eq('id', userId)
       .single();
-    if (data?.nome) {
-      setUserNome(data.nome);
-    }
+    if (data?.nome) setUserNome(data.nome);
+    setIsAdmin(data?.is_admin ?? false);
   };
 
   const login = async (email: string, password: string): Promise<{ error: string | null }> => {
@@ -98,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         user: session?.user ?? null,
         userNome,
+        isAdmin,
         loading,
         login,
         signup,
