@@ -39,20 +39,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginInProgress = useRef(false);
 
   useEffect(() => {
-    // getSession() lê do localStorage — rápido, sem rede
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      if (s?.user) {
-        setSession(s);
-        const profile = await fetchProfile(s.user.id);
-        if (profile) {
-          setUserNome(profile.nome ?? '');
-          setIsAdmin(profile.is_admin ?? false);
+    // getSession() pode travar se há sessão expirada no localStorage
+    // e o refresh request não retorna. Limitamos a 5 segundos.
+    const getSessionSafe = () =>
+      Promise.race([
+        supabase.auth.getSession(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 5000)
+        ),
+      ]);
+
+    getSessionSafe()
+      .then(async ({ data: { session: s } }) => {
+        if (s?.user) {
+          setSession(s);
+          const profile = await fetchProfile(s.user.id);
+          if (profile) {
+            setUserNome(profile.nome ?? '');
+            setIsAdmin(profile.is_admin ?? false);
+          }
         }
-      }
-      setLoading(false);
-    }).catch(() => {
-      setLoading(false);
-    });
+        setLoading(false);
+      })
+      .catch(() => {
+        // Timeout ou erro: limpa sessão corrompida do localStorage e mostra login
+        supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+        setLoading(false);
+      });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
       // SIGNED_IN durante login() já é tratado por login() — ignora
