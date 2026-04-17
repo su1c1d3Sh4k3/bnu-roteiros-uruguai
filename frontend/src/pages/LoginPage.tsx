@@ -11,22 +11,33 @@ export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/';
+
+  // Para onde voltar após login (ex: vieram de /admin)
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/';
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
     if (!email.trim() || !password.trim()) {
       setError('Preencha todos os campos.');
       return;
     }
+    setError('');
     setLoading(true);
-    const { error: loginError } = await login(email, password);
+
+    const { error: loginError, isAdmin } = await login(email, password);
+
     if (loginError) {
       setError(loginError);
       setLoading(false);
+      return;
+    }
+
+    // Redireciona baseado em isAdmin retornado diretamente pelo login()
+    // Sem depender de estado React — sem race condition
+    if (isAdmin) {
+      navigate('/admin', { replace: true });
     } else {
-      navigate(from, { replace: true });
+      navigate(from === '/admin' ? '/' : from, { replace: true });
     }
   };
 
@@ -79,7 +90,7 @@ export default function LoginPage() {
               padding: '12px 16px', marginBottom: 20, fontSize: 14, color: '#DC2626',
               display: 'flex', alignItems: 'center', gap: 8,
             }}>
-              <span>⚠️</span> {error}
+              ⚠️ {error}
             </div>
           )}
 
@@ -93,6 +104,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="seu@email.com"
+                disabled={loading}
                 style={{
                   width: '100%', border: '1.5px solid #E2E8F0', borderRadius: 10,
                   padding: '12px 14px', fontSize: 15, outline: 'none', boxSizing: 'border-box',
@@ -112,6 +124,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="Sua senha"
+                disabled={loading}
                 style={{
                   width: '100%', border: '1.5px solid #E2E8F0', borderRadius: 10,
                   padding: '12px 14px', fontSize: 15, outline: 'none', boxSizing: 'border-box',
@@ -137,13 +150,7 @@ export default function LoginPage() {
           </form>
 
           <div style={{ textAlign: 'center', marginTop: 20 }}>
-            <Link
-              to="/register"
-              style={{
-                color: '#0D3B8C', fontWeight: 600, fontSize: 14,
-                textDecoration: 'none',
-              }}
-            >
+            <Link to="/register" style={{ color: '#0D3B8C', fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>
               Criar conta
             </Link>
           </div>
