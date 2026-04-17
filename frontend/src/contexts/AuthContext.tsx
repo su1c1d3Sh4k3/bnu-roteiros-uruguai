@@ -24,7 +24,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
+    // Safety timeout — garante que loading nunca fica preso para sempre
+    const safetyTimer = setTimeout(() => {
+      setProfileLoaded(true);
+      setLoading(false);
+    }, 8000);
+
     supabase.auth.getSession().then(async ({ data: { session: s } }) => {
+      clearTimeout(safetyTimer);
       setSession(s);
       if (s?.user) {
         await loadUserProfile(s.user.id);
@@ -33,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setLoading(false);
     }).catch(() => {
+      clearTimeout(safetyTimer);
       setProfileLoaded(true);
       setLoading(false);
     });
@@ -52,14 +60,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadUserProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('nome, is_admin')
-      .eq('id', userId)
-      .single();
-    if (data?.nome) setUserNome(data.nome);
-    setIsAdmin(data?.is_admin ?? false);
-    setProfileLoaded(true);
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('nome, is_admin')
+        .eq('id', userId)
+        .single();
+      if (data?.nome) setUserNome(data.nome);
+      setIsAdmin(data?.is_admin ?? false);
+    } finally {
+      setProfileLoaded(true);
+    }
   };
 
   const login = async (email: string, password: string): Promise<{ error: string | null }> => {
