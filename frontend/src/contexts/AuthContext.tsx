@@ -54,12 +54,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (email: string, password: string): Promise<{ error: string | null }> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       if (error.message === 'Invalid login credentials') {
         return { error: 'E-mail ou senha incorretos.' };
       }
       return { error: error.message };
+    }
+    // Carrega perfil e session imediatamente, antes do navigate no caller
+    if (data.session && data.user) {
+      setSession(data.session);
+      await loadUserProfile(data.user.id);
     }
     return { error: null };
   };
