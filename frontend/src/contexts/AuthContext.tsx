@@ -8,6 +8,7 @@ interface AuthContextType {
   userNome: string;
   isAdmin: boolean;
   loading: boolean;
+  profileLoaded: boolean;
   login: (email: string, password: string) => Promise<{ error: string | null }>;
   signup: (email: string, password: string, metadata: { nome: string; whatsapp: string }) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [userNome, setUserNome] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -26,9 +28,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s);
       if (s?.user) {
         await loadUserProfile(s.user.id);
+      } else {
+        setProfileLoaded(true);
       }
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => {
+      setProfileLoaded(true);
+      setLoading(false);
+    });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
       setSession(s);
@@ -37,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setUserNome('');
         setIsAdmin(false);
+        setProfileLoaded(true);
       }
     });
 
@@ -51,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .single();
     if (data?.nome) setUserNome(data.nome);
     setIsAdmin(data?.is_admin ?? false);
+    setProfileLoaded(true);
   };
 
   const login = async (email: string, password: string): Promise<{ error: string | null }> => {
@@ -61,7 +70,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return { error: error.message };
     }
-    // Carrega perfil e session imediatamente, antes do navigate no caller
     if (data.session && data.user) {
       setSession(data.session);
       await loadUserProfile(data.user.id);
@@ -97,6 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setSession(null);
     setUserNome('');
+    setIsAdmin(false);
+    setProfileLoaded(false);
   };
 
   return (
@@ -107,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userNome,
         isAdmin,
         loading,
+        profileLoaded,
         login,
         signup,
         logout,

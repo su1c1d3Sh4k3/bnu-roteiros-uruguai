@@ -2,10 +2,11 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { session, isAdmin, loading } = useAuth();
+  const { session, isAdmin, loading, profileLoaded } = useAuth();
   const location = useLocation();
 
-  if (loading) {
+  // Aguarda tanto o check de sessão quanto o carregamento do perfil
+  if (loading || (session && !profileLoaded)) {
     return (
       <div style={{
         minHeight: '100vh',
