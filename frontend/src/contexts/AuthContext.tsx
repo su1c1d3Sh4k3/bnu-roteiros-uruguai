@@ -33,42 +33,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userNome, setUserNome] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  // Flag para evitar que onAuthStateChange sobrescreva o estado
-  // que login() já carregou (race condition)
   const loginInProgress = useRef(false);
 
   useEffect(() => {
-    // getSession() pode travar se há sessão expirada no localStorage
-    // e o refresh request não retorna. Limitamos a 5 segundos.
-    const getSessionSafe = () =>
-      Promise.race([
-        supabase.auth.getSession(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), 5000)
-        ),
-      ]);
+    let done = false;
 
-    getSessionSafe()
-      .then(async ({ data: { session: s } }) => {
+    // Timeout de segurança: cobre getSession() + fetchProfile()
+    // Se qualquer uma das duas travar, loading vira false em 5s
+    const safetyTimer = setTimeout(() => {
+      if (!done) {
+        done = true;
+        supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+        setLoading(false);
+      }
+    }, 5000);
+
+    const init = async () => {
+      try {
+        const { data: { session: s } } = await supabase.auth.getSession();
+        if (done) return;
+
         if (s?.user) {
           setSession(s);
           const profile = await fetchProfile(s.user.id);
-          if (profile) {
+          if (!done && profile) {
             setUserNome(profile.nome ?? '');
             setIsAdmin(profile.is_admin ?? false);
           }
         }
-        setLoading(false);
-      })
-      .catch(() => {
-        // Timeout ou erro: limpa sessão corrompida do localStorage e mostra login
-        supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-        setLoading(false);
-      });
+      } catch {
+        // ignora — safetyTimer vai chamar setLoading(false)
+      } finally {
+        if (!done) {
+          done = true;
+          clearTimeout(safetyTimer);
+          setLoading(false);
+        }
+      }
+    };
+
+    init();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
-      // SIGNED_IN durante login() já é tratado por login() — ignora
       if (event === 'SIGNED_IN' && loginInProgress.current) return;
 
       if (!s) {
@@ -80,7 +86,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setSession(s);
 
-      // Para SIGNED_IN de fora (ex: outro aba), carrega perfil
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
         const profile = await fetchProfile(s.user.id);
         if (profile) {
@@ -90,7 +95,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      done = true;
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (

@@ -21,7 +21,6 @@ FROM nginx:alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# SPA routing + cache de assets
 RUN printf 'server {\n\
     listen 80;\n\
     server_name _;\n\
@@ -29,9 +28,6 @@ RUN printf 'server {\n\
     index index.html;\n\
     location / {\n\
         try_files $uri $uri/ /index.html;\n\
-        add_header Cache-Control "no-cache, no-store, must-revalidate";\n\
-        add_header Pragma "no-cache";\n\
-        add_header Expires "0";\n\
     }\n\
     location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {\n\
         expires 1y;\n\
