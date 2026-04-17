@@ -173,7 +173,7 @@ function ChatPanel({ messages, input, setInput, loading, onSend, endRef, onClose
 export default function ResultPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  useAuth();
 
   const [result, setResult] = useState<string | null>(null);
   const [answers, setAnswers] = useState<WizardAnswers>({});
