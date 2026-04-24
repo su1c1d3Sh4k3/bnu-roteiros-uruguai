@@ -23,13 +23,25 @@ function BNULogo({ size = 48 }: { size?: number }) {
 function TourImage({ id, nome, tours }: { id: string; nome: string; tours: Tour[] }) {
   const tour = tours.find(t => t.id === id);
   const [src, setSrc] = useState(tour?.image_url || '');
-  const [tried, setTried] = useState(false);
+  const [errored, setErrored] = useState(false);
+
+  if (!src || errored) {
+    return (
+      <div style={{
+        width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'linear-gradient(135deg, #0D3B8C, #1B6E3C)', fontSize: 32,
+      }}>
+        {tour?.emoji || '🗺️'}
+      </div>
+    );
+  }
+
   return (
     <img
-      src={src || `https://SUA_URL_AQUI/${id}.jpg`}
+      src={src}
       alt={nome}
       style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-      onError={() => { if (!tried) { setTried(true); setSrc(`https://SUA_URL_AQUI/${id}.jpg`); } }}
+      onError={() => setErrored(true)}
     />
   );
 }
