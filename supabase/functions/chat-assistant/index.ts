@@ -75,10 +75,10 @@ serve(async (req) => {
       )
     }
 
-    // --- Validate itinerary ownership ---
+    // --- Validate itinerary ownership + fetch generated result ---
     const { data: itinerary, error: itinError } = await supabase
       .from("itineraries")
-      .select("id")
+      .select("id, generated_result")
       .eq("id", itinerary_id)
       .eq("user_id", userId)
       .single()
@@ -89,6 +89,13 @@ serve(async (req) => {
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
+
+    // --- Fetch wizard answers for this itinerary ---
+    const { data: answers } = await supabase
+      .from("itinerary_answers")
+      .select("nome, email, perfil, adultos, criancas, data_ida, data_volta, dias_total, cidades, hotel_estrelas, hotel_opcao, hotel_nome, passeios, ocasiao_especial, ocasiao_detalhe, orcamento, extras")
+      .eq("itinerary_id", itinerary_id)
+      .single()
 
     // --- Fetch last 50 chat messages for context ---
     const { data: existingMessages } = await supabase
@@ -130,7 +137,28 @@ serve(async (req) => {
       getSystemPrompt(supabase),
       getActiveDocuments(supabase),
     ])
-    const systemPrompt = basePrompt + extraDocs
+
+    // --- Build itinerary context for the AI ---
+    let itineraryContext = ""
+    if (answers) {
+      itineraryContext += "\n\n═══════════════════════════════════════\nDADOS DO CLIENTE E DA VIAGEM:\n═══════════════════════════════════════\n"
+      itineraryContext += `Nome: ${answers.nome || "N/A"}\n`
+      itineraryContext += `Perfil: ${answers.perfil || "N/A"}\n`
+      itineraryContext += `Adultos: ${answers.adultos || 0}, Criancas: ${answers.criancas || 0}\n`
+      if (answers.data_ida) itineraryContext += `Periodo: ${answers.data_ida} a ${answers.data_volta || "N/A"} (${answers.dias_total || "?"} dias)\n`
+      if (answers.cidades) itineraryContext += `Cidades: ${JSON.stringify(answers.cidades)}\n`
+      if (answers.hotel_estrelas) itineraryContext += `Hotel: ${answers.hotel_estrelas} estrelas${answers.hotel_opcao ? ` (${answers.hotel_opcao})` : ""}${answers.hotel_nome ? ` - ${answers.hotel_nome}` : ""}\n`
+      if (answers.passeios) itineraryContext += `Passeios escolhidos: ${Array.isArray(answers.passeios) ? answers.passeios.join(", ") : JSON.stringify(answers.passeios)}\n`
+      if (answers.ocasiao_especial) itineraryContext += `Ocasiao especial: ${answers.ocasiao_detalhe || answers.ocasiao_especial}\n`
+      if (answers.orcamento) itineraryContext += `Orcamento: ${answers.orcamento}\n`
+      if (answers.extras) itineraryContext += `Extras: ${answers.extras}\n`
+    }
+    if (itinerary.generated_result) {
+      itineraryContext += "\n═══════════════════════════════════════\nROTEIRO GERADO PARA ESTE CLIENTE:\n═══════════════════════════════════════\n"
+      itineraryContext += itinerary.generated_result
+    }
+
+    const systemPrompt = basePrompt + extraDocs + itineraryContext
 
     // --- Call OpenAI API (GPT-4.1) ---
     const openaiKey = Deno.env.get("OPENAI_API_KEY")
