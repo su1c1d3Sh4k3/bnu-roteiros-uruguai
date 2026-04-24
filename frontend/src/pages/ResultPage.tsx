@@ -253,6 +253,46 @@ export default function ResultPage() {
     loadData();
   }, [id]);
 
+  // Send itinerary email to client + copy to BNU
+  const sendItineraryEmail = async (clientEmail: string, clientName: string, itineraryHtml: string) => {
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const endpoint = `${SUPABASE_URL}/functions/v1/send-email`;
+
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #0D3B8C, #1B6E3C); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h1 style="color: #fff; margin: 0; font-size: 24px;">Brasileiros no Uruguai</h1>
+          <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0;">Seu roteiro personalizado</p>
+        </div>
+        <div style="background: #fff; padding: 30px; border: 1px solid #e2e8f0; border-top: none;">
+          <p style="color: #334155; font-size: 16px;">Olá, ${clientName}!</p>
+          <p style="color: #334155; font-size: 15px; line-height: 1.7;">Segue abaixo o seu pré-roteiro personalizado para o Uruguai. Nossa consultora entrará em contato em breve para prosseguir com a contratação.</p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+          <div style="color: #1E293B; font-size: 14px; line-height: 1.8; white-space: pre-line;">${itineraryHtml}</div>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+          <p style="color: #64748b; font-size: 13px; font-style: italic;">Este é um pré-roteiro orientativo. Valores finais serão confirmados pela consultora.</p>
+        </div>
+        <div style="background: #F8FAFC; padding: 16px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0; border-top: none; text-align: center;">
+          <p style="color: #94a3b8; font-size: 12px; margin: 0;">Brasileiros no Uruguai - contato@brasileirosnouruguai.com.br</p>
+        </div>
+      </div>
+    `;
+
+    const headers = { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY };
+
+    await Promise.all([
+      fetch(endpoint, {
+        method: 'POST', headers,
+        body: JSON.stringify({ to: clientEmail, subject: `Seu roteiro para o Uruguai - ${clientName}`, html: emailHtml }),
+      }),
+      fetch(endpoint, {
+        method: 'POST', headers,
+        body: JSON.stringify({ to: 'contato@brasileirosnouruguai.com.br', subject: `Novo roteiro - ${clientName} (${clientEmail})`, html: emailHtml }),
+      }),
+    ]);
+  };
+
   // Send to consultant via Edge Function
   const handleSend = async () => {
     if (!id) return;
@@ -271,10 +311,20 @@ export default function ResultPage() {
         .update({ status: 'sent_to_consultant', sent_at: new Date().toISOString() })
         .eq('id', id);
 
-      setSendMessage(data?.message || 'Solicitacao registrada! A Consultora Especialista entrara em contato em breve.');
+      // Send itinerary email to client + BNU copy
+      if (answers.email && result) {
+        const cleanText = result.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
+        await sendItineraryEmail(
+          answers.email,
+          answers.nome || 'Cliente',
+          cleanText.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+        ).catch(console.error);
+      }
+
+      setSendMessage(data?.message || 'Solicitação registrada! A Consultora Especialista entrará em contato em breve.');
       setSendStatus('sent');
     } catch {
-      setSendMessage('Solicitacao registrada! A Consultora Especialista entrara em contato em breve.');
+      setSendMessage('Solicitação registrada! A Consultora Especialista entrará em contato em breve.');
       setSendStatus('sent');
     }
   };
@@ -404,18 +454,18 @@ export default function ResultPage() {
             </div>
           ) : (
             <div style={{ background: 'white', border: '2px solid #0D3B8C', borderRadius: 16, padding: '28px 24px' }}>
-              <h3 style={{ margin: '0 0 10px', fontSize: 20, color: '#0D3B8C', fontWeight: 800 }}>Gostou dos valores e condicoes da sua viagem?</h3>
+              <h3 style={{ margin: '0 0 10px', fontSize: 20, color: '#0D3B8C', fontWeight: 800 }}>Gostou dos valores e condições da sua viagem?</h3>
               <p style={{ margin: '0 0 24px', color: '#334155', fontSize: 16, lineHeight: 1.7 }}>
                 Se nao tiver mais duvidas, siga para o proximo passo enviando o seu roteiro para a nossa consultora e ela entrara em contato para prosseguir com a contratacao. Voce tambem pode alterar o roteiro ou tirar suas duvidas antes de enviar o roteiro para a consultora.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <button onClick={handleSend} disabled={sendStatus === 'sending'}
                   style={{ width: '100%', padding: '16px 20px', border: 'none', borderRadius: 12, background: sendStatus === 'sending' ? '#E2E8F0' : 'linear-gradient(135deg, #0D3B8C, #1B6E3C)', color: sendStatus === 'sending' ? '#94A3B8' : 'white', fontWeight: 800, cursor: sendStatus === 'sending' ? 'not-allowed' : 'pointer', fontSize: 16 }}>
-                  {sendStatus === 'sending' ? 'Enviando...' : '✅ Sim. Seguir para proximo passo'}
+                  {sendStatus === 'sending' ? 'Enviando...' : '✅ Sim, seguir para a contratação'}
                 </button>
                 <button onClick={() => setChatOpen(true)}
                   style={{ width: '100%', padding: '16px 20px', border: '2px solid #F59E0B', borderRadius: 12, background: '#FFFBEB', color: '#92400E', fontWeight: 700, cursor: 'pointer', fontSize: 16 }}>
-                  💬 Tirar Duvidas com o Rodrigo
+                  💬 Quero tirar dúvidas com um consultor
                 </button>
                 <button onClick={() => navigate(`/wizard/${id}`)} style={{ width: '100%', padding: '14px 20px', border: '2px solid #0D3B8C', borderRadius: 12, background: '#EFF6FF', color: '#0D3B8C', fontWeight: 700, cursor: 'pointer', fontSize: 15 }}>
                   Revisar o meu roteiro
