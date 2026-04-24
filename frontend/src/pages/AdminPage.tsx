@@ -7,8 +7,9 @@ import HotelManager from '../components/admin/HotelManager';
 import TransferManager from '../components/admin/TransferManager';
 import AIPromptEditor from '../components/admin/AIPromptEditor';
 import AIDocumentManager from '../components/admin/AIDocumentManager';
+import EmailTest from '../components/admin/EmailTest';
 
-type Tab = 'tours' | 'cities' | 'hotels' | 'transfers' | 'ai-prompt' | 'ai-docs';
+type Tab = 'tours' | 'cities' | 'hotels' | 'transfers' | 'ai-prompt' | 'ai-docs' | 'email';
 
 interface NavItem {
   id: Tab;
@@ -24,6 +25,7 @@ const NAV: NavItem[] = [
   { id: 'transfers',label: 'Transfers',   icon: '🚗',  section: 'Produtos' },
   { id: 'ai-prompt',label: 'Prompt Rodrigo', icon: '🤖', section: 'Inteligência Artificial' },
   { id: 'ai-docs',  label: 'Documentos',  icon: '📄',  section: 'Inteligência Artificial' },
+  { id: 'email',    label: 'Teste Email', icon: '✉️',  section: 'Sistema' },
 ];
 
 export default function AdminPage() {
@@ -44,6 +46,7 @@ export default function AdminPage() {
       case 'transfers': return <TransferManager />;
       case 'ai-prompt': return <AIPromptEditor />;
       case 'ai-docs':   return <AIDocumentManager />;
+      case 'email':     return <EmailTest />;
     }
   };
 
