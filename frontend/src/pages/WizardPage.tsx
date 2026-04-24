@@ -22,7 +22,7 @@ function BNULogo({ size = 48 }: { size?: number }) {
 
 function TourImage({ id, nome, tours }: { id: string; nome: string; tours: Tour[] }) {
   const tour = tours.find(t => t.id === id);
-  const [src, setSrc] = useState(tour?.image_url || '');
+  const src = tour?.image_url || '';
   const [errored, setErrored] = useState(false);
 
   if (!src || errored) {
