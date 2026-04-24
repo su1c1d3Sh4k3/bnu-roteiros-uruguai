@@ -254,20 +254,19 @@ export default function ResultPage() {
   }, [id]);
 
   // Send itinerary email to client + copy to BNU
-  const sendItineraryEmail = async (clientEmail: string, clientName: string, itineraryHtml: string) => {
+  const sendItineraryEmail = async (clientEmail: string, clientName: string, clientPhone: string, itineraryHtml: string) => {
     const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
     const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
     const endpoint = `${SUPABASE_URL}/functions/v1/send-email`;
 
-    const emailHtml = `
+    const baseHtml = (extra: string) => `
       <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">
         <div style="background: linear-gradient(135deg, #0D3B8C, #1B6E3C); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
           <h1 style="color: #fff; margin: 0; font-size: 24px;">Brasileiros no Uruguai</h1>
           <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0;">Seu roteiro personalizado</p>
         </div>
         <div style="background: #fff; padding: 30px; border: 1px solid #e2e8f0; border-top: none;">
-          <p style="color: #334155; font-size: 16px;">Olá, ${clientName}!</p>
-          <p style="color: #334155; font-size: 15px; line-height: 1.7;">Segue abaixo o seu pré-roteiro personalizado para o Uruguai. Nossa consultora entrará em contato em breve para prosseguir com a contratação.</p>
+          ${extra}
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
           <div style="color: #1E293B; font-size: 14px; line-height: 1.8; white-space: pre-line;">${itineraryHtml}</div>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
@@ -279,16 +278,30 @@ export default function ResultPage() {
       </div>
     `;
 
+    const clientContent = `
+      <p style="color: #334155; font-size: 16px;">Olá, ${clientName}!</p>
+      <p style="color: #334155; font-size: 15px; line-height: 1.7;">Segue abaixo o seu pré-roteiro personalizado para o Uruguai. Nossa consultora entrará em contato em breve para prosseguir com a contratação.</p>
+    `;
+
+    const companyContent = `
+      <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <h3 style="margin: 0 0 10px; font-size: 15px; color: #0D3B8C;">Dados do Cliente</h3>
+        <p style="margin: 4px 0; font-size: 14px; color: #334155;"><strong>Nome:</strong> ${clientName}</p>
+        <p style="margin: 4px 0; font-size: 14px; color: #334155;"><strong>Telefone:</strong> ${clientPhone || 'Não informado'}</p>
+        <p style="margin: 4px 0; font-size: 14px; color: #334155;"><strong>Email:</strong> ${clientEmail}</p>
+      </div>
+    `;
+
     const headers = { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY };
 
     await Promise.all([
       fetch(endpoint, {
         method: 'POST', headers,
-        body: JSON.stringify({ to: clientEmail, subject: `Seu roteiro para o Uruguai - ${clientName}`, html: emailHtml }),
+        body: JSON.stringify({ to: clientEmail, subject: `Seu roteiro para o Uruguai - ${clientName}`, html: baseHtml(clientContent) }),
       }),
       fetch(endpoint, {
         method: 'POST', headers,
-        body: JSON.stringify({ to: 'contato@brasileirosnouruguai.com.br', subject: `Novo roteiro - ${clientName} (${clientEmail})`, html: emailHtml }),
+        body: JSON.stringify({ to: 'contato@brasileirosnouruguai.com.br', subject: `Novo roteiro - ${clientName} (${clientEmail})`, html: baseHtml(companyContent) }),
       }),
     ]);
   };
@@ -317,6 +330,7 @@ export default function ResultPage() {
         await sendItineraryEmail(
           answers.email,
           answers.nome || 'Cliente',
+          answers.whatsapp || '',
           cleanText.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
         ).catch(console.error);
       }
