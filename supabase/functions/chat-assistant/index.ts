@@ -16,6 +16,19 @@ async function getSystemPrompt(supabase: ReturnType<typeof createClient>): Promi
   return KNOWLEDGE
 }
 
+// Busca regras de roteiro (id=2)
+async function getItineraryRules(supabase: ReturnType<typeof createClient>): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from("ai_prompt_config")
+      .select("system_prompt")
+      .eq("id", 2)
+      .single()
+    if (!error && data?.system_prompt) return data.system_prompt
+  } catch (_) { /* fallback */ }
+  return ""
+}
+
 // Busca documentos de contexto ativos
 async function getActiveDocuments(supabase: ReturnType<typeof createClient>): Promise<string> {
   try {
@@ -32,6 +45,25 @@ async function getActiveDocuments(supabase: ReturnType<typeof createClient>): Pr
     }
   } catch (_) { /* ignore */ }
   return ""
+}
+
+// Tool definition for OpenAI function calling
+const UPDATE_ITINERARY_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "update_itinerary",
+    description: "Atualiza o roteiro e orcamento do cliente quando ele pede qualquer alteracao. Deve conter o roteiro COMPLETO atualizado (pre-roteiro + pre-orcamento), nao apenas a parte alterada.",
+    parameters: {
+      type: "object",
+      properties: {
+        updated_content: {
+          type: "string",
+          description: "O conteudo COMPLETO do roteiro atualizado, incluindo Pre-Roteiro dia a dia e Pre-Orcamento Estimado. Use o mesmo formato markdown do roteiro original."
+        }
+      },
+      required: ["updated_content"]
+    }
+  }
 }
 
 serve(async (req) => {
@@ -123,7 +155,7 @@ serve(async (req) => {
       )
     }
 
-    // --- Build messages array for Claude ---
+    // --- Build messages array for AI ---
     const messagesForAI = [
       ...(existingMessages || []).map((m: { role: string; content: string }) => ({
         role: m.role,
@@ -132,10 +164,11 @@ serve(async (req) => {
       { role: "user", content: message },
     ]
 
-    // --- Fetch dynamic prompt + documents ---
-    const [basePrompt, extraDocs] = await Promise.all([
+    // --- Fetch dynamic prompt + documents + itinerary rules ---
+    const [basePrompt, extraDocs, itineraryRules] = await Promise.all([
       getSystemPrompt(supabase),
       getActiveDocuments(supabase),
+      getItineraryRules(supabase),
     ])
 
     // --- Build itinerary context for the AI ---
@@ -154,13 +187,31 @@ serve(async (req) => {
       if (answers.extras) itineraryContext += `Extras: ${answers.extras}\n`
     }
     if (itinerary.generated_result) {
-      itineraryContext += "\n═══════════════════════════════════════\nROTEIRO GERADO PARA ESTE CLIENTE:\n═══════════════════════════════════════\n"
+      itineraryContext += "\n═══════════════════════════════════════\nROTEIRO ATUAL DO CLIENTE:\n═══════════════════════════════════════\n"
       itineraryContext += itinerary.generated_result
     }
 
-    const systemPrompt = basePrompt + extraDocs + itineraryContext
+    // --- Itinerary modification instructions ---
+    let modificationInstructions = ""
+    if (itinerary.generated_result) {
+      modificationInstructions = `\n\n═══════════════════════════════════════
+INSTRUCOES PARA ALTERACAO DE ROTEIRO:
+═══════════════════════════════════════
+Voce tem a capacidade de ALTERAR o roteiro do cliente em tempo real. Quando o cliente pedir qualquer modificacao no roteiro (trocar passeio, inverter dias, mudar hotel, adicionar/remover atividade, recalcular orcamento, etc.), voce DEVE usar a funcao update_itinerary para aplicar a alteracao.
 
-    // --- Call OpenAI API (GPT-4.1) ---
+REGRAS para alteracao:
+1. Sempre envie o roteiro COMPLETO atualizado (Pre-Roteiro + Pre-Orcamento), nao apenas o trecho alterado.
+2. Mantenha o mesmo formato markdown do roteiro original.
+3. Recalcule o orcamento quando houver mudanca nos passeios, noites ou transfers.
+4. Siga as regras de roteiro: ${itineraryRules}
+5. Apos aplicar a alteracao, confirme ao cliente o que foi mudado de forma breve e simpatica.
+6. Se o cliente pedir algo impossivel (ex: passeio que nao existe), explique e sugira alternativas SEM alterar o roteiro.
+7. Para perguntas gerais ou duvidas que NAO pedem alteracao, responda normalmente sem usar a funcao.`
+    }
+
+    const systemPrompt = basePrompt + extraDocs + itineraryContext + modificationInstructions
+
+    // --- Call OpenAI API (GPT-4.1) with function calling ---
     const openaiKey = Deno.env.get("OPENAI_API_KEY")
     if (!openaiKey) {
       return new Response(
@@ -169,20 +220,28 @@ serve(async (req) => {
       )
     }
 
+    const aiPayload: Record<string, unknown> = {
+      model: "gpt-4.1",
+      max_tokens: 4000,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...messagesForAI,
+      ],
+    }
+
+    // Only offer the tool if there's an existing itinerary to modify
+    if (itinerary.generated_result) {
+      aiPayload.tools = [UPDATE_ITINERARY_TOOL]
+      aiPayload.tool_choice = "auto"
+    }
+
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${openaiKey}`,
       },
-      body: JSON.stringify({
-        model: "gpt-4.1",
-        max_tokens: 350,
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messagesForAI,
-        ],
-      }),
+      body: JSON.stringify(aiPayload),
     })
 
     if (!aiRes.ok) {
@@ -195,7 +254,81 @@ serve(async (req) => {
     }
 
     const aiData = await aiRes.json()
-    const replyText = aiData.choices?.[0]?.message?.content || "Nao consegui responder agora. Tente novamente!"
+    const choice = aiData.choices?.[0]
+
+    let replyText = ""
+    let itineraryUpdated = false
+
+    // Check if the AI wants to call the update_itinerary function
+    if (choice?.finish_reason === "tool_calls" || choice?.message?.tool_calls?.length > 0) {
+      const toolCalls = choice.message.tool_calls || []
+      const updateCall = toolCalls.find((tc: { function: { name: string } }) => tc.function.name === "update_itinerary")
+
+      if (updateCall) {
+        try {
+          const args = JSON.parse(updateCall.function.arguments)
+          const updatedContent = args.updated_content
+
+          if (updatedContent) {
+            // Save updated itinerary to DB
+            const { error: updateError } = await supabase
+              .from("itineraries")
+              .update({ generated_result: updatedContent })
+              .eq("id", itinerary_id)
+              .eq("user_id", userId)
+
+            if (updateError) {
+              console.error("Error updating itinerary:", updateError)
+            } else {
+              itineraryUpdated = true
+            }
+          }
+        } catch (e) {
+          console.error("Error parsing tool call:", e)
+        }
+
+        // Make a follow-up call to get the conversational reply
+        const followUpMessages = [
+          { role: "system", content: systemPrompt },
+          ...messagesForAI,
+          choice.message,
+          {
+            role: "tool",
+            tool_call_id: updateCall.id,
+            content: itineraryUpdated
+              ? "Roteiro atualizado com sucesso. O cliente ja esta vendo a versao atualizada na tela."
+              : "Erro ao atualizar o roteiro. Informe o cliente que houve um problema."
+          },
+        ]
+
+        const followUpRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openaiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1",
+            max_tokens: 350,
+            messages: followUpMessages,
+          }),
+        })
+
+        if (followUpRes.ok) {
+          const followUpData = await followUpRes.json()
+          replyText = followUpData.choices?.[0]?.message?.content || "Pronto! Atualizei o seu roteiro."
+        } else {
+          replyText = itineraryUpdated
+            ? "Pronto! Atualizei o seu roteiro com as alteracoes solicitadas. Da uma olhada na tela!"
+            : "Ops, tive um problema ao atualizar o roteiro. Pode tentar novamente?"
+        }
+      }
+    }
+
+    // If no tool was called, use the direct reply
+    if (!replyText) {
+      replyText = choice?.message?.content || "Nao consegui responder agora. Tente novamente!"
+    }
 
     // --- Save assistant response ---
     const { error: insertAssistantError } = await supabase
@@ -212,7 +345,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ reply: replyText }),
+      JSON.stringify({ reply: replyText, itinerary_updated: itineraryUpdated }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
 

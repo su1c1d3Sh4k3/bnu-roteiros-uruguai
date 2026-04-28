@@ -378,6 +378,18 @@ export default function ResultPage() {
         : data?.reply || 'Nao consegui responder agora. Tente novamente!';
 
       setChatMessages(prev => [...prev, { role: 'assistant', content: assistantContent }]);
+
+      // If the AI updated the itinerary, refresh it from DB
+      if (data?.itinerary_updated) {
+        const { data: freshItinerary } = await supabase
+          .from('itineraries')
+          .select('generated_result')
+          .eq('id', id)
+          .single();
+        if (freshItinerary?.generated_result) {
+          setResult(freshItinerary.generated_result);
+        }
+      }
     } catch {
       setChatMessages(prev => [...prev, { role: 'assistant', content: 'Ops! Problema momentaneo. Tente novamente!' }]);
     }
