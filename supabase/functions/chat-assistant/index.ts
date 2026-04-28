@@ -47,27 +47,28 @@ async function getActiveDocuments(supabase: ReturnType<typeof createClient>): Pr
   return ""
 }
 
-// Tool definition for OpenAI function calling
-const UPDATE_ITINERARY_TOOL = {
-  type: "function" as const,
-  function: {
-    name: "update_itinerary",
-    description: "Atualiza o roteiro e orcamento do cliente quando ele pede qualquer alteracao. Deve conter o roteiro COMPLETO atualizado (pre-roteiro + pre-orcamento), nao apenas a parte alterada.",
-    parameters: {
-      type: "object",
-      properties: {
-        updated_content: {
-          type: "string",
-          description: "O conteudo COMPLETO do roteiro atualizado, incluindo Pre-Roteiro dia a dia e Pre-Orcamento Estimado. Use o mesmo formato markdown do roteiro original."
-        }
-      },
-      required: ["updated_content"]
-    }
+async function callOpenAI(openaiKey: string, messages: Record<string, unknown>[], maxTokens: number): Promise<Record<string, unknown> | null> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${openaiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1",
+      max_tokens: maxTokens,
+      messages,
+    }),
+  })
+  if (!res.ok) {
+    console.error("OpenAI API error:", res.status, await res.text())
+    return null
   }
+  const data = await res.json()
+  return data
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
   }
@@ -83,7 +84,6 @@ serve(async (req) => {
     }
 
     const token = authHeader.replace("Bearer ", "")
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -97,8 +97,6 @@ serve(async (req) => {
     }
 
     const userId = user.id
-
-    // --- Body ---
     const { itinerary_id, message } = await req.json()
     if (!itinerary_id || !message) {
       return new Response(
@@ -107,45 +105,28 @@ serve(async (req) => {
       )
     }
 
-    // --- Validate itinerary ownership + fetch generated result ---
-    const { data: itinerary, error: itinError } = await supabase
-      .from("itineraries")
-      .select("id, generated_result")
-      .eq("id", itinerary_id)
-      .eq("user_id", userId)
-      .single()
+    // --- Fetch itinerary + answers + messages ---
+    const [itinRes, answersRes, messagesRes] = await Promise.all([
+      supabase.from("itineraries").select("id, generated_result").eq("id", itinerary_id).eq("user_id", userId).single(),
+      supabase.from("itinerary_answers").select("nome, email, perfil, adultos, criancas, data_ida, data_volta, dias_total, cidades, hotel_estrelas, hotel_opcao, hotel_nome, passeios, ocasiao_especial, ocasiao_detalhe, orcamento, extras").eq("itinerary_id", itinerary_id).single(),
+      supabase.from("chat_messages").select("role, content").eq("itinerary_id", itinerary_id).order("created_at", { ascending: true }).limit(50),
+    ])
 
-    if (itinError || !itinerary) {
+    const itinerary = itinRes.data
+    if (!itinerary) {
       return new Response(
         JSON.stringify({ error: "Roteiro nao encontrado ou nao pertence ao usuario." }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
 
-    // --- Fetch wizard answers for this itinerary ---
-    const { data: answers } = await supabase
-      .from("itinerary_answers")
-      .select("nome, email, perfil, adultos, criancas, data_ida, data_volta, dias_total, cidades, hotel_estrelas, hotel_opcao, hotel_nome, passeios, ocasiao_especial, ocasiao_detalhe, orcamento, extras")
-      .eq("itinerary_id", itinerary_id)
-      .single()
-
-    // --- Fetch last 50 chat messages for context ---
-    const { data: existingMessages } = await supabase
-      .from("chat_messages")
-      .select("role, content")
-      .eq("itinerary_id", itinerary_id)
-      .order("created_at", { ascending: true })
-      .limit(50)
+    const answers = answersRes.data
+    const existingMessages = messagesRes.data
 
     // --- Save user message ---
     const { error: insertUserError } = await supabase
       .from("chat_messages")
-      .insert({
-        itinerary_id,
-        user_id: userId,
-        role: "user",
-        content: message,
-      })
+      .insert({ itinerary_id, user_id: userId, role: "user", content: message })
 
     if (insertUserError) {
       console.error("Error saving user message:", insertUserError)
@@ -155,8 +136,8 @@ serve(async (req) => {
       )
     }
 
-    // --- Build messages array for AI ---
-    const messagesForAI = [
+    // --- Build conversation history ---
+    const conversationHistory = [
       ...(existingMessages || []).map((m: { role: string; content: string }) => ({
         role: m.role,
         content: m.content,
@@ -171,7 +152,7 @@ serve(async (req) => {
       getItineraryRules(supabase),
     ])
 
-    // --- Build itinerary context for the AI ---
+    // --- Build itinerary context ---
     let itineraryContext = ""
     if (answers) {
       itineraryContext += "\n\n═══════════════════════════════════════\nDADOS DO CLIENTE E DA VIAGEM:\n═══════════════════════════════════════\n"
@@ -191,27 +172,6 @@ serve(async (req) => {
       itineraryContext += itinerary.generated_result
     }
 
-    // --- Itinerary modification instructions ---
-    let modificationInstructions = ""
-    if (itinerary.generated_result) {
-      modificationInstructions = `\n\n═══════════════════════════════════════
-INSTRUCOES PARA ALTERACAO DE ROTEIRO:
-═══════════════════════════════════════
-Voce tem a capacidade de ALTERAR o roteiro do cliente em tempo real. Quando o cliente pedir qualquer modificacao no roteiro (trocar passeio, inverter dias, mudar hotel, adicionar/remover atividade, recalcular orcamento, etc.), voce DEVE usar a funcao update_itinerary para aplicar a alteracao.
-
-REGRAS para alteracao:
-1. Sempre envie o roteiro COMPLETO atualizado (Pre-Roteiro + Pre-Orcamento), nao apenas o trecho alterado.
-2. Mantenha o mesmo formato markdown do roteiro original.
-3. Recalcule o orcamento quando houver mudanca nos passeios, noites ou transfers.
-4. Siga as regras de roteiro: ${itineraryRules}
-5. Apos aplicar a alteracao, confirme ao cliente o que foi mudado de forma breve e simpatica.
-6. Se o cliente pedir algo impossivel (ex: passeio que nao existe), explique e sugira alternativas SEM alterar o roteiro.
-7. Para perguntas gerais ou duvidas que NAO pedem alteracao, responda normalmente sem usar a funcao.`
-    }
-
-    const systemPrompt = basePrompt + extraDocs + itineraryContext + modificationInstructions
-
-    // --- Call OpenAI API (GPT-4.1) with function calling ---
     const openaiKey = Deno.env.get("OPENAI_API_KEY")
     if (!openaiKey) {
       return new Response(
@@ -220,129 +180,105 @@ REGRAS para alteracao:
       )
     }
 
-    const aiPayload: Record<string, unknown> = {
-      model: "gpt-4.1",
-      max_tokens: 4000,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...messagesForAI,
-      ],
-    }
-
-    // Only offer the tool if there's an existing itinerary to modify
-    if (itinerary.generated_result) {
-      aiPayload.tools = [UPDATE_ITINERARY_TOOL]
-      aiPayload.tool_choice = "auto"
-    }
-
-    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${openaiKey}`,
-      },
-      body: JSON.stringify(aiPayload),
-    })
-
-    if (!aiRes.ok) {
-      const errBody = await aiRes.text()
-      console.error("OpenAI API error:", aiRes.status, errBody)
-      return new Response(
-        JSON.stringify({ error: "Erro ao obter resposta da IA." }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
-
-    const aiData = await aiRes.json()
-    const choice = aiData.choices?.[0]
-
     let replyText = ""
     let itineraryUpdated = false
 
-    // Check if the AI wants to call the update_itinerary function
-    if (choice?.finish_reason === "tool_calls" || choice?.message?.tool_calls?.length > 0) {
-      const toolCalls = choice.message.tool_calls || []
-      const updateCall = toolCalls.find((tc: { function: { name: string } }) => tc.function.name === "update_itinerary")
+    // ════════════════════════════════════════════════════════
+    // STEP 1: Classify — does the user want to modify the itinerary?
+    // ════════════════════════════════════════════════════════
+    if (itinerary.generated_result) {
+      const classifyPrompt = `Voce e um classificador. Analise a ultima mensagem do usuario no contexto da conversa e responda SOMENTE "SIM" ou "NAO".
 
-      if (updateCall) {
-        try {
-          const args = JSON.parse(updateCall.function.arguments)
-          const updatedContent = args.updated_content
+Responda "SIM" se o usuario esta pedindo qualquer alteracao, ajuste, troca, adicao, remocao ou modificacao no roteiro ou orcamento da viagem. Exemplos: trocar passeio, inverter dias, adicionar atividade, remover passeio, mudar hotel, recalcular valores, etc.
 
-          if (updatedContent) {
-            // Save updated itinerary to DB
-            const { error: updateError } = await supabase
-              .from("itineraries")
-              .update({ generated_result: updatedContent })
-              .eq("id", itinerary_id)
-              .eq("user_id", userId)
+Responda "NAO" se o usuario esta apenas fazendo uma pergunta, tirando duvida, pedindo informacao, agradecendo, ou qualquer coisa que NAO seja um pedido de alteracao no roteiro.
 
-            if (updateError) {
-              console.error("Error updating itinerary:", updateError)
-            } else {
-              itineraryUpdated = true
-            }
+Responda apenas SIM ou NAO, nada mais.`
+
+      const classifyData = await callOpenAI(openaiKey, [
+        { role: "system", content: classifyPrompt },
+        ...conversationHistory.slice(-6), // last few messages for context
+      ], 5)
+
+      const classification = (classifyData as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content?.trim()?.toUpperCase() || "NAO"
+      console.log("[CHAT] Classification:", classification, "for message:", message.substring(0, 80))
+
+      // ════════════════════════════════════════════════════════
+      // STEP 2a: If modification requested, generate updated itinerary
+      // ════════════════════════════════════════════════════════
+      if (classification.startsWith("SIM")) {
+        const modifySystemPrompt = `Voce e um assistente que modifica roteiros de viagem ao Uruguai. O cliente pediu uma alteracao. Aplique a alteracao solicitada e retorne o roteiro COMPLETO atualizado.
+
+${itineraryRules}
+
+INSTRUCOES:
+- Retorne o roteiro COMPLETO (Pre-Roteiro dia a dia + Pre-Orcamento Estimado).
+- Mantenha o mesmo formato markdown do roteiro original (## para secoes, ### para dias, - para bullets com emojis).
+- Recalcule o orcamento se houver mudanca em passeios, noites ou transfers.
+- Nao adicione explicacoes, apenas o roteiro atualizado.
+- Se a alteracao pedida for impossivel, retorne o roteiro original sem modificacoes.
+
+${itineraryContext}`
+
+        const modifyData = await callOpenAI(openaiKey, [
+          { role: "system", content: modifySystemPrompt },
+          ...conversationHistory.slice(-6),
+        ], 4000)
+
+        const updatedContent = (modifyData as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content || ""
+
+        // Validate: must contain Pre-Roteiro structure
+        if (updatedContent && (updatedContent.includes("## Pre-Roteiro") || updatedContent.includes("## Pré-Roteiro") || updatedContent.includes("### Dia"))) {
+          const { error: updateError } = await supabase
+            .from("itineraries")
+            .update({ generated_result: updatedContent })
+            .eq("id", itinerary_id)
+            .eq("user_id", userId)
+
+          if (updateError) {
+            console.error("Error updating itinerary:", updateError)
+          } else {
+            itineraryUpdated = true
+            console.log("[CHAT] Itinerary updated successfully, length:", updatedContent.length)
           }
-        } catch (e) {
-          console.error("Error parsing tool call:", e)
-        }
-
-        // Make a follow-up call to get the conversational reply
-        const followUpMessages = [
-          { role: "system", content: systemPrompt },
-          ...messagesForAI,
-          choice.message,
-          {
-            role: "tool",
-            tool_call_id: updateCall.id,
-            content: itineraryUpdated
-              ? "Roteiro atualizado com sucesso. O cliente ja esta vendo a versao atualizada na tela."
-              : "Erro ao atualizar o roteiro. Informe o cliente que houve um problema."
-          },
-        ]
-
-        const followUpRes = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${openaiKey}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4.1",
-            max_tokens: 350,
-            messages: followUpMessages,
-          }),
-        })
-
-        if (followUpRes.ok) {
-          const followUpData = await followUpRes.json()
-          replyText = followUpData.choices?.[0]?.message?.content || "Pronto! Atualizei o seu roteiro."
         } else {
-          replyText = itineraryUpdated
-            ? "Pronto! Atualizei o seu roteiro com as alteracoes solicitadas. Da uma olhada na tela!"
-            : "Ops, tive um problema ao atualizar o roteiro. Pode tentar novamente?"
+          console.log("[CHAT] Generated content did not pass validation, skipping update. Content start:", updatedContent.substring(0, 100))
         }
+
+        // ════════════════════════════════════════════════════════
+        // STEP 2b: Generate conversational reply acknowledging the change
+        // ════════════════════════════════════════════════════════
+        const replySystemPrompt = basePrompt + extraDocs + itineraryContext +
+          (itineraryUpdated
+            ? "\n\nVoce ACABOU de atualizar o roteiro do cliente com sucesso. A alteracao ja esta visivel na tela dele. Confirme brevemente o que foi alterado de forma simpatica e natural (2-3 frases). Nao repita o roteiro inteiro."
+            : "\n\nVoce tentou alterar o roteiro mas nao foi possivel. Explique brevemente o motivo e sugira alternativas.")
+
+        const replyData = await callOpenAI(openaiKey, [
+          { role: "system", content: replySystemPrompt },
+          ...conversationHistory,
+        ], 350)
+
+        replyText = (replyData as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content || (itineraryUpdated ? "Pronto! Atualizei o seu roteiro. Da uma olhada!" : "Nao consegui aplicar a alteracao. Pode tentar de outra forma?")
       }
     }
 
-    // If no tool was called, use the direct reply
+    // ════════════════════════════════════════════════════════
+    // STEP 2 (no modification): Regular chat response
+    // ════════════════════════════════════════════════════════
     if (!replyText) {
-      replyText = choice?.message?.content || "Nao consegui responder agora. Tente novamente!"
+      const chatSystemPrompt = basePrompt + extraDocs + itineraryContext
+      const chatData = await callOpenAI(openaiKey, [
+        { role: "system", content: chatSystemPrompt },
+        ...conversationHistory,
+      ], 350)
+
+      replyText = (chatData as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content || "Nao consegui responder agora. Tente novamente!"
     }
 
     // --- Save assistant response ---
-    const { error: insertAssistantError } = await supabase
+    await supabase
       .from("chat_messages")
-      .insert({
-        itinerary_id,
-        user_id: userId,
-        role: "assistant",
-        content: replyText,
-      })
-
-    if (insertAssistantError) {
-      console.error("Error saving assistant message:", insertAssistantError)
-    }
+      .insert({ itinerary_id, user_id: userId, role: "assistant", content: replyText })
 
     return new Response(
       JSON.stringify({ reply: replyText, itinerary_updated: itineraryUpdated }),
