@@ -8,7 +8,23 @@ interface PromptConfig {
   updated_at: string;
 }
 
-export default function AIPromptEditor() {
+interface AIPromptEditorProps {
+  configId?: number;
+  title?: string;
+  subtitle?: string;
+  tips?: string;
+  successMessage?: string;
+  fileName?: string;
+}
+
+export default function AIPromptEditor({
+  configId = 1,
+  title = 'Prompt do Rodrigo',
+  subtitle = 'Controla o comportamento, personalidade e conhecimentos do assistente virtual.',
+  tips = 'Use as seções com ═══ para separar blocos de conhecimento. A parte COMO SE COMPORTAR controla o tom e estilo. As REGRAS DO RODRIGO definem as regras de negócio absolutas. Alterações são aplicadas imediatamente após publicar — todas as novas conversas usarão o prompt atualizado.',
+  successMessage = 'Prompt publicado com sucesso! O Rodrigo já está usando a nova versão.',
+  fileName = 'system_prompt.txt',
+}: AIPromptEditorProps) {
   const { user } = useAuth();
   const [config, setConfig] = useState<PromptConfig | null>(null);
   const [draft, setDraft] = useState('');
@@ -18,11 +34,11 @@ export default function AIPromptEditor() {
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [configId]);
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from('ai_prompt_config').select('*').eq('id', 1).single();
+    const { data } = await supabase.from('ai_prompt_config').select('*').eq('id', configId).single();
     if (data) { setConfig(data); setDraft(data.system_prompt); }
     setLoading(false);
   };
@@ -44,12 +60,12 @@ export default function AIPromptEditor() {
       system_prompt: draft,
       updated_at: new Date().toISOString(),
       updated_by: user?.id,
-    }).eq('id', 1);
+    }).eq('id', configId);
 
     if (error) {
       notify('Erro ao salvar: ' + error.message, false);
     } else {
-      notify('Prompt publicado com sucesso! O Rodrigo já está usando a nova versão.');
+      notify(successMessage);
       setHasChanges(false);
       load();
     }
@@ -69,9 +85,9 @@ export default function AIPromptEditor() {
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#1E293B' }}>Prompt do Rodrigo</h2>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#1E293B' }}>{title}</h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748B' }}>
-            Controla o comportamento, personalidade e conhecimentos do assistente virtual.
+            {subtitle}
           </p>
           {config?.updated_at && (
             <p style={{ margin: '4px 0 0', fontSize: 12, color: '#94A3B8' }}>
@@ -113,9 +129,7 @@ export default function AIPromptEditor() {
         padding: '12px 16px', background: '#EFF6FF', borderRadius: 10,
         border: '1px solid #BFDBFE', marginBottom: 16, fontSize: 13, color: '#1E40AF',
       }}>
-        <strong>Dicas de edição:</strong> Use as seções com ═══ para separar blocos de conhecimento.
-        A parte <strong>COMO SE COMPORTAR</strong> controla o tom e estilo. As <strong>REGRAS DO RODRIGO</strong> definem as regras de negócio absolutas.
-        Alterações são aplicadas imediatamente após publicar — todas as novas conversas usarão o prompt atualizado.
+        <strong>Dicas de edição:</strong> {tips}
       </div>
 
       {/* Code window */}
@@ -134,7 +148,7 @@ export default function AIPromptEditor() {
           <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#FEBC2E', display: 'inline-block' }} />
           <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#28C840', display: 'inline-block' }} />
           <span style={{ fontSize: 12, color: '#6B7280', marginLeft: 8, fontFamily: 'monospace' }}>
-            system_prompt.txt
+            {fileName}
           </span>
           {hasChanges && (
             <span style={{ marginLeft: 'auto', fontSize: 11, color: '#F59E0B', fontWeight: 600 }}>● unsaved</span>
@@ -182,7 +196,7 @@ export default function AIPromptEditor() {
             <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
             <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 700, color: '#1E293B' }}>Publicar novo prompt?</h3>
             <p style={{ margin: '0 0 24px', fontSize: 14, color: '#64748B', lineHeight: 1.6 }}>
-              O Rodrigo passará a usar este prompt imediatamente em todas as novas conversas.
+              As alterações serão aplicadas imediatamente em todas as novas interações.
               Confirme apenas se o prompt foi revisado.
             </p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>

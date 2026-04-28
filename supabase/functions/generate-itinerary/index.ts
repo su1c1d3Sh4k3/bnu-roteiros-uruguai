@@ -15,6 +15,20 @@ async function getSystemPromptBase(supabase: ReturnType<typeof createClient>): P
   return KNOWLEDGE
 }
 
+const ITINERARY_RULES_FALLBACK = "REGRAS ABSOLUTAS: (1) Cada passeio ocupa 1 dia inteiro — NUNCA coloque 2 passeios no mesmo dia. (2) Dia 1 (chegada) e ultimo dia (partida) nao tem passeio. (3) Apresente APENAS os passeios listados em PASSEIOS QUE CABEM NO ROTEIRO. NUNCA invente atividades, restaurantes ou outras atracoes. (4) Nao use negrito no Pre-Roteiro. (5) Use emojis nos bullets. (6) Responda em portugues sem travessao. (7) Valores de hospedagem sao SEMPRE aproximados — indicar isso claramente. (8) NUNCA sugira hoteis especificos — isso e responsabilidade exclusiva da Consultora Especialista."
+
+async function getItineraryRules(supabase: ReturnType<typeof createClient>): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from("ai_prompt_config")
+      .select("system_prompt")
+      .eq("id", 2)
+      .single()
+    if (!error && data?.system_prompt) return data.system_prompt
+  } catch (_) { /* fallback */ }
+  return ITINERARY_RULES_FALLBACK
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -237,8 +251,11 @@ Liste com emojis:
 
 Calcule o orcamento apenas com os passeios que cabem no roteiro (nao incluir os que foram cortados). Use valores exatos da base de dados.`
 
-    const promptBase = await getSystemPromptBase(supabase)
-    const systemPrompt = promptBase + "\n\nREGRAS ABSOLUTAS: (1) Cada passeio ocupa 1 dia inteiro — NUNCA coloque 2 passeios no mesmo dia. (2) Dia 1 (chegada) e ultimo dia (partida) nao tem passeio. (3) Apresente APENAS os passeios listados em PASSEIOS QUE CABEM NO ROTEIRO. NUNCA invente atividades, restaurantes ou outras atracoes. (4) Nao use negrito no Pre-Roteiro. (5) Use emojis nos bullets. (6) Responda em portugues sem travessao. (7) Valores de hospedagem sao SEMPRE aproximados — indicar isso claramente. (8) NUNCA sugira hoteis especificos — isso e responsabilidade exclusiva da Consultora Especialista."
+    const [promptBase, itineraryRules] = await Promise.all([
+      getSystemPromptBase(supabase),
+      getItineraryRules(supabase),
+    ])
+    const systemPrompt = promptBase + "\n\n" + itineraryRules
 
     // --- Call OpenAI API (GPT-4.1) ---
     const openaiKey = Deno.env.get("OPENAI_API_KEY")

@@ -9,7 +9,7 @@ import AIPromptEditor from '../components/admin/AIPromptEditor';
 import AIDocumentManager from '../components/admin/AIDocumentManager';
 import EmailTest from '../components/admin/EmailTest';
 
-type Tab = 'tours' | 'cities' | 'hotels' | 'transfers' | 'ai-prompt' | 'ai-docs' | 'email';
+type Tab = 'tours' | 'cities' | 'hotels' | 'transfers' | 'ai-prompt' | 'ai-itinerary' | 'ai-docs' | 'email';
 
 interface NavItem {
   id: Tab;
@@ -24,6 +24,7 @@ const NAV: NavItem[] = [
   { id: 'hotels',   label: 'Hotéis',      icon: '🏨',  section: 'Produtos' },
   { id: 'transfers',label: 'Transfers',   icon: '🚗',  section: 'Produtos' },
   { id: 'ai-prompt',label: 'Prompt Rodrigo', icon: '🤖', section: 'Inteligência Artificial' },
+  { id: 'ai-itinerary', label: 'Prompt Roteiro', icon: '📋', section: 'Inteligência Artificial' },
   { id: 'ai-docs',  label: 'Documentos',  icon: '📄',  section: 'Inteligência Artificial' },
   { id: 'email',    label: 'Teste Email', icon: '✉️',  section: 'Sistema' },
 ];
@@ -45,6 +46,14 @@ export default function AdminPage() {
       case 'hotels':    return <HotelManager />;
       case 'transfers': return <TransferManager />;
       case 'ai-prompt': return <AIPromptEditor />;
+      case 'ai-itinerary': return <AIPromptEditor
+        configId={2}
+        title="Prompt do Roteiro"
+        subtitle="Controla as regras e o estilo da IA que gera o pré-roteiro e pré-orçamento para o cliente."
+        tips="Estas regras são aplicadas junto com o conhecimento base (Prompt Rodrigo) na hora de gerar o roteiro. Aqui você controla como a IA distribui os dias, formata o orçamento, e quais regras absolutas deve seguir."
+        successMessage="Prompt do roteiro publicado! Todos os novos roteiros usarão estas regras."
+        fileName="itinerary_rules.txt"
+      />;
       case 'ai-docs':   return <AIDocumentManager />;
       case 'email':     return <EmailTest />;
     }
