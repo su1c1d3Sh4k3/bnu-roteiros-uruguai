@@ -33,6 +33,58 @@ function getDiaSemana(date: Date): string {
   return dias[date.getDay()]
 }
 
+// Helper: check if a weekday matches tour availability
+function isDayAvailable(diaSemana: string, disponibilidade: string): boolean {
+  if (!disponibilidade) return true
+  const normalize = (s: string) => s.toLowerCase()
+    .replace(/[áàâã]/g, "a")
+    .replace(/[éèê]/g, "e")
+    .replace(/[íìî]/g, "i")
+    .replace(/[óòôõ]/g, "o")
+    .replace(/[úùû]/g, "u")
+    .replace(/[ç]/g, "c")
+  const disp = normalize(disponibilidade)
+  if (disp.includes("todos os dias")) return true
+
+  const diaClean = normalize(diaSemana)
+
+  // Map day names to check tokens
+  const dayTokens: Record<string, string[]> = {
+    "segunda-feira": ["segunda"],
+    "terca-feira": ["terca"],
+    "quarta-feira": ["quarta"],
+    "quinta-feira": ["quinta"],
+    "sexta-feira": ["sexta"],
+    "sabado": ["sabado"],
+    "domingo": ["domingo"],
+  }
+
+  const tokens = dayTokens[diaClean] || [diaClean.replace("-feira", "")]
+
+  // Check if any token is found or if it's in a range (e.g., "terca a domingo")
+  for (const token of tokens) {
+    if (disp.includes(token)) return true
+  }
+
+  // Check range patterns like "terca a domingo"
+  const rangeMatch = disp.match(/(\w+)\s+a\s+(\w+)/)
+  if (rangeMatch) {
+    const order = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+    const startIdx = order.findIndex(d => rangeMatch[1].includes(d))
+    const endIdx = order.findIndex(d => rangeMatch[2].includes(d))
+    const dayIdx = order.findIndex(d => tokens[0].includes(d))
+    if (startIdx >= 0 && endIdx >= 0 && dayIdx >= 0) {
+      if (startIdx <= endIdx) {
+        return dayIdx >= startIdx && dayIdx <= endIdx
+      } else {
+        return dayIdx >= startIdx || dayIdx <= endIdx
+      }
+    }
+  }
+
+  return false
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
@@ -168,14 +220,170 @@ serve(async (req) => {
 
     // Build detailed tour info for selected tours (ALL of them, no slicing)
     const passeiosIds: string[] = answers.passeios || []
-    const passeiosDetalhados = passeiosIds
-      .map((id) => {
-        const t = toursMap[id]
-        if (!t) return null
-        return `- ${t.nome} | Tipo: ${t.tipo_passeio || "Diurno"} | Preço: R$${t.valor_por_pessoa} | Duração: ${t.duration || "N/A"} | Saída: ${t.horario_saida || "N/A"} | Retorno: ${t.horario_retorno || "N/A"} | Disponibilidade: ${t.disponibilidade || "todos os dias"} | Cidade de partida: ${citiesMap[t.cidade_base] || t.cidade_base} | Link: ${t.link_url || "N/A"}`
+
+    // Pre-calculate which days each tour can be scheduled on
+    // Build city schedule: which city is the client in on each day
+    const citySchedule: string[] = [] // city_id per day
+    if (totalDays > 0) {
+      const cidadesOrdem = Object.entries(cidadesObj)
+      let dayIdx = 0
+      for (const [cityId, nights] of cidadesOrdem) {
+        // First city: includes arrival day
+        if (dayIdx === 0) {
+          citySchedule.push(cityId) // arrival day
+          dayIdx++
+        }
+        // Fill the nights (each night = waking up in that city)
+        for (let n = 0; n < (nights as number); n++) {
+          if (dayIdx < totalDays) {
+            citySchedule.push(cityId)
+            dayIdx++
+          }
+        }
+      }
+      // Fill remaining days
+      while (citySchedule.length < totalDays) {
+        citySchedule.push(cidadesOrdem[cidadesOrdem.length - 1]?.[0] || "mvd")
+      }
+    }
+
+    // For each tour, compute possible days
+    interface TourAllocation {
+      id: string
+      nome: string
+      tipo: string
+      preco: number
+      duracao: string
+      saida: string
+      retorno: string
+      disponibilidade: string
+      cidadePartida: string
+      link: string
+      diasPossiveis: number[] // day indices (0-based)
+    }
+
+    const tourAllocations: TourAllocation[] = []
+    for (const id of passeiosIds) {
+      const t = toursMap[id]
+      if (!t) continue
+
+      const diasPossiveis: number[] = []
+      if (tripStart && totalDays > 0) {
+        for (let i = 0; i < totalDays; i++) {
+          const d = new Date(tripStart.getTime() + i * 86400000)
+          const diaSemana = getDiaSemana(d)
+          const isArrival = i === 0
+          const isDeparture = i === totalDays - 1
+          const cityOnDay = citySchedule[i] || ""
+          const tipo = (t.tipo_passeio || "Diurno")
+
+          if (isDeparture) continue
+          if (isArrival && tipo !== "Noturno") continue
+          if (cityOnDay !== t.cidade_base) continue
+          if (!isDayAvailable(diaSemana, t.disponibilidade || "todos os dias")) continue
+
+          diasPossiveis.push(i)
+        }
+      }
+
+      tourAllocations.push({
+        id,
+        nome: t.nome,
+        tipo: t.tipo_passeio || "Diurno",
+        preco: t.valor_por_pessoa,
+        duracao: t.duration || "N/A",
+        saida: t.horario_saida || "N/A",
+        retorno: t.horario_retorno || "N/A",
+        disponibilidade: t.disponibilidade || "todos os dias",
+        cidadePartida: citiesMap[t.cidade_base] || t.cidade_base,
+        link: t.link_url || "N/A",
+        diasPossiveis,
       })
-      .filter(Boolean)
+    }
+
+    // Sort by fewest options first (constraint propagation)
+    tourAllocations.sort((a, b) => a.diasPossiveis.length - b.diasPossiveis.length)
+
+    // Generate a suggested allocation (greedy by constraint)
+    const dayAssignments: Map<number, string[]> = new Map() // day -> tour names
+    const unallocated: string[] = []
+
+    for (const tour of tourAllocations) {
+      if (tour.diasPossiveis.length === 0) {
+        unallocated.push(tour.nome)
+        continue
+      }
+
+      let allocated = false
+      for (const dayIdx of tour.diasPossiveis) {
+        const existing = dayAssignments.get(dayIdx) || []
+        const existingTours = existing.map(name => tourAllocations.find(ta => ta.nome === name))
+
+        // Check compatibility
+        if (tour.tipo === "Dia Todo") {
+          // Dia Todo needs empty day
+          if (existing.length === 0) {
+            dayAssignments.set(dayIdx, [tour.nome])
+            allocated = true
+            break
+          }
+        } else if (tour.tipo === "Noturno") {
+          // Noturno can go with Diurno, not with Dia Todo
+          const hasDiaTodo = existingTours.some(et => et?.tipo === "Dia Todo")
+          const hasNoturno = existingTours.some(et => et?.tipo === "Noturno")
+          if (!hasDiaTodo && !hasNoturno) {
+            dayAssignments.set(dayIdx, [...existing, tour.nome])
+            allocated = true
+            break
+          }
+        } else {
+          // Diurno can go with Noturno, not with Dia Todo or another Diurno
+          const hasDiaTodo = existingTours.some(et => et?.tipo === "Dia Todo")
+          const hasDiurno = existingTours.some(et => et?.tipo === "Diurno")
+          if (!hasDiaTodo && !hasDiurno) {
+            dayAssignments.set(dayIdx, [...existing, tour.nome])
+            allocated = true
+            break
+          }
+        }
+      }
+
+      if (!allocated) {
+        unallocated.push(tour.nome)
+      }
+    }
+
+    // Build the suggested schedule text
+    let suggestedScheduleStr = ""
+    if (tripStart) {
+      const lines: string[] = []
+      for (let i = 0; i < totalDays; i++) {
+        const d = new Date(tripStart.getTime() + i * 86400000)
+        const dateStr = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`
+        const diaSemana = getDiaSemana(d)
+        const assigned = dayAssignments.get(i) || []
+        let dayLabel = `Dia ${i + 1} (${dateStr}, ${diaSemana}) [${citiesMap[citySchedule[i]] || citySchedule[i]}]`
+        if (i === 0) dayLabel += " → CHEGADA: transfer aeroporto→hotel"
+        if (i === totalDays - 1) dayLabel += " → PARTIDA: transfer hotel→aeroporto (NENHUM passeio)"
+
+        if (assigned.length > 0 && i !== totalDays - 1) {
+          dayLabel += ` → ${assigned.join(" + ")}`
+        } else if (i > 0 && i < totalDays - 1 && assigned.length === 0) {
+          dayLabel += " → Dia livre"
+        }
+        lines.push(dayLabel)
+      }
+      suggestedScheduleStr = lines.join("\n")
+    }
+
+    // Build passeios detalhados
+    const passeiosDetalhados = tourAllocations
+      .map(ta => `- ${ta.nome} | Tipo: ${ta.tipo} | Preço: R$${ta.preco} | Duração: ${ta.duracao} | Saída: ${ta.saida} | Retorno: ${ta.retorno} | Disponibilidade: ${ta.disponibilidade} | Cidade de partida: ${ta.cidadePartida} | Link: ${ta.link}`)
       .join("\n")
+
+    const unallocatedStr = unallocated.length > 0
+      ? `\n⚠️ PASSEIOS QUE NAO COUBERAM NO ROTEIRO (avisar cliente no inicio):\n${unallocated.map(n => `- ${n}`).join("\n")}`
+      : ""
 
     // Map profile
     const profileLabel = profiles.find((p: { id: string; label: string }) => p.id === answers.perfil)?.label || answers.perfil || "nao informado"
@@ -209,71 +417,147 @@ serve(async (req) => {
       return `- ${citiesMap[h.city_id] || h.city_id} ${h.hotel_style_id}★: ~R$${h.price_per_night}/noite por pessoa (${h.season_note || ""})`
     }).join("\n")
 
-    // --- Build the prompt (clean, without conflicting hardcoded rules) ---
-    const prompt = `Crie um PRE-ROTEIRO dia a dia e um PRE-ORCAMENTO completo para esta viagem.
+    // --- Generate Pre-Roteiro in code (deterministic, not AI-dependent) ---
+    const preRoteiro: string[] = []
 
-═══════════════════════════════════════
-DADOS DA VIAGEM:
-═══════════════════════════════════════
-Nome: ${answers.nome}
-Perfil: ${profileLabel}
-Adultos: ${answers.adultos || 1} | Criancas: ${answers.criancas || 0} | Total: ${total} pessoas
-Datas: ${datasStr}
-Total de noites: ${totalNights || "nao informado"}
-Total de dias: ${totalDays}
-Cidades e noites: ${cidadesStr || "a definir"}
-Hotel: ${hotelStr} | ${hotelPref}
-Ocasiao especial: ${ocasiao}
-Orcamento por pessoa: ${answers.orcamento || "flexivel"}
-Observacoes: ${answers.extras || "nenhuma"}
+    // Add warning for unallocated tours
+    if (unallocated.length > 0) {
+      for (const name of unallocated) {
+        const tour = tourAllocations.find(ta => ta.nome === name)
+        const reason = tour && tour.diasPossiveis.length === 0
+          ? "nao ha dias disponiveis com a combinacao de cidade/disponibilidade/tipo"
+          : "nao houve dia livre compativel no roteiro"
+        preRoteiro.push(`\u26A0\uFE0F Aviso: ${name} nao foi incluido porque ${reason}.`)
+      }
+      preRoteiro.push("")
+    }
 
-═══════════════════════════════════════
-CALENDARIO DA VIAGEM (dias da semana):
-═══════════════════════════════════════
-${calendarioStr || "Datas nao informadas - considere dias genericos"}
+    // Generate each day
+    if (tripStart && totalDays > 0) {
+      // Determine which day the city changes happen
+      let currentCity = citySchedule[0]
 
-═══════════════════════════════════════
-PASSEIOS SELECIONADOS PELO CLIENTE:
-═══════════════════════════════════════
-${passeiosDetalhados || "Nenhum passeio selecionado"}
+      for (let i = 0; i < totalDays; i++) {
+        const d = new Date(tripStart.getTime() + i * 86400000)
+        const dateStr = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`
+        const diaSemana = getDiaSemana(d)
+        const cityOnDay = citySchedule[i]
+        const cityName = citiesMap[cityOnDay] || cityOnDay
+        const assigned = dayAssignments.get(i) || []
+        const isArrival = i === 0
+        const isDeparture = i === totalDays - 1
 
-Observacao: Consulte as REGRAS do system prompt para saber o Tipo (Diurno/Noturno/Dia Todo), disponibilidade por dia da semana, e horarios de cada passeio. Distribua os passeios nos dias disponiveis respeitando todas as regras.
+        // Check if city changed from previous day
+        const prevCity = i > 0 ? citySchedule[i - 1] : cityOnDay
+        const cityChanged = cityOnDay !== prevCity
 
-═══════════════════════════════════════
-TABELA DE PRECOS DE TRANSFERS (por trecho, valor do grupo):
-═══════════════════════════════════════
-${transfersStr}
+        preRoteiro.push(`### Dia ${i + 1} - ${dateStr} (${diaSemana}) - ${cityName}`)
 
-═══════════════════════════════════════
-TABELA DE PRECOS DE HOSPEDAGEM (valor APROXIMADO por pessoa/noite):
-═══════════════════════════════════════
-${hotelPricingStr}
+        if (isArrival) {
+          preRoteiro.push(`- \u2708\uFE0F Chegada em ${cityName}`)
+          preRoteiro.push(`- \uD83D\uDE97 Transfer aeroporto \u2192 hotel`)
+          preRoteiro.push(`- \uD83D\uDECE\uFE0F Check-in no hotel`)
+          // Check for noturno tour on arrival
+          for (const tourName of assigned) {
+            const ta = tourAllocations.find(t => t.nome === tourName)
+            if (ta) {
+              preRoteiro.push(`- \uD83C\uDFAB ${ta.nome} (${ta.saida} - ${ta.retorno}) ${ta.link}`)
+            }
+          }
+          if (assigned.length === 0) {
+            preRoteiro.push(`- \uD83C\uDF19 Noite livre`)
+          }
+        } else if (isDeparture) {
+          preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel`)
+          preRoteiro.push(`- \uD83D\uDE97 Transfer hotel \u2192 aeroporto`)
+          preRoteiro.push(`- \uD83D\uDEEB Partida`)
+        } else {
+          // Check if we need check-out/transfer to new city
+          if (cityChanged) {
+            const prevCityName = citiesMap[prevCity] || prevCity
+            preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel em ${prevCityName}`)
+          }
 
-═══════════════════════════════════════
-INSTRUCOES DE FORMATO:
-═══════════════════════════════════════
-Gere SOMENTE as duas secoes abaixo:
+          if (assigned.length > 0) {
+            for (const tourName of assigned) {
+              const ta = tourAllocations.find(t => t.nome === tourName)
+              if (ta) {
+                preRoteiro.push(`- \uD83C\uDFAB ${ta.nome} (${ta.saida} - ${ta.retorno}) ${ta.link}`)
+              }
+            }
+          } else {
+            preRoteiro.push(`- \uD83C\uDF19 Dia livre`)
+          }
+
+          if (cityChanged && !assigned.some(n => n.toLowerCase().includes("city tour punta") || n.toLowerCase().includes("city tour colonia"))) {
+            // Need a transfer between cities
+            preRoteiro.push(`- \uD83D\uDE97 Transfer ${citiesMap[prevCity] || prevCity} \u2192 ${cityName}`)
+          }
+
+          if (cityChanged) {
+            preRoteiro.push(`- \uD83C\uDFE8 Check-in no hotel em ${cityName}`)
+          }
+        }
+
+        preRoteiro.push("")
+        currentCity = cityOnDay
+      }
+    }
+
+    const preRoteiroText = preRoteiro.join("\n")
+
+    // --- Build the prompt: AI only generates the budget section ---
+    const prompt = `O Pre-Roteiro abaixo ja foi gerado pelo sistema. Sua tarefa e APENAS gerar o "Pre-Orcamento Estimado" com base nos dados abaixo. Retorne o Pre-Roteiro INTACTO (copie exatamente) seguido do Pre-Orcamento que voce calcular.
 
 ## Pre-Roteiro
 
-Para cada dia, use o formato:
-### Dia X - [data] ([dia da semana]) - [cidade]
-(bullets com emojis: hotel=🏨, transfer=🚗, check-in=🛎️, check-out=🧳, chegada=✈️, partida=🛫, passeio=🎫, noite livre=🌙)
+${preRoteiroText}
 
-## Pre-Orcamento Estimado
+---
 
-Liste com emojis:
-- 🎫 Passeios: cada passeio com valor por pessoa e link
-- 🚗 Transfers: aeroporto ida+volta e entre cidades se aplicavel (valor do grupo)
-- 🏨 Hospedagem: por cidade, noites x valor/pessoa = subtotal (valor APROXIMADO)
-- 💰 TOTAL POR PESSOA e TOTAL DO GRUPO em destaque`
+DADOS PARA CALCULO DO ORCAMENTO:
+- ${total} pessoas (${answers.adultos || 1} adultos, ${answers.criancas || 0} criancas)
+- Orcamento desejado pelo cliente: ${answers.orcamento || "flexivel"}
 
-    // --- Fetch system prompt + itinerary rules from DB ---
-    const [promptBase, itineraryRules] = await Promise.all([
-      getSystemPromptBase(supabase),
-      getItineraryRules(supabase),
-    ])
-    const systemPrompt = promptBase + "\n\n" + itineraryRules
+PASSEIOS INCLUIDOS NO ROTEIRO (valores por pessoa):
+${tourAllocations.filter(ta => !unallocated.includes(ta.nome)).map(ta => `- ${ta.nome}: R$${ta.preco}/pessoa (${ta.link})`).join("\n")}
+
+TRANSFERS NECESSARIOS (valores por grupo):
+${transfersStr}
+
+HOSPEDAGEM (valores APROXIMADOS por pessoa/noite):
+${hotelPricingStr}
+Cidades e noites: ${cidadesStr}
+Hotel selecionado: ${hotelStr}
+
+INSTRUCOES PARA O ORCAMENTO:
+1. Copie o Pre-Roteiro acima EXATAMENTE como esta (incluindo avisos de passeios nao incluidos)
+2. Adicione "## Pre-Orcamento Estimado" depois do Pre-Roteiro
+3. Liste passeios com emoji 🎫, transfers com 🚗, hospedagem com 🏨
+4. Calcule TOTAL POR PESSOA e TOTAL DO GRUPO com emoji 💰
+5. Valores de hospedagem sao APROXIMADOS — mencione isso
+6. Se o total extrapolar o orcamento do cliente, avise com ⚠️ e sugira ajustes
+7. Use o valor de transfer correto da tabela para o numero de pessoas do grupo`
+
+    // DEBUG: log the suggested schedule
+    console.log("[GENERATE] Suggested schedule:\n" + suggestedScheduleStr)
+    if (unallocated.length > 0) console.log("[GENERATE] Unallocated:", unallocated.join(", "))
+
+    // --- Build system prompt: minimal, focused on formatting only ---
+    const systemPrompt = `Voce e um formatador de roteiros de viagem ao Uruguai para a agencia "Brasileiros no Uruguai" (BNU).
+
+SEU TRABALHO: Receber um roteiro pre-montado pelo sistema e formata-lo de forma bonita em markdown para o cliente.
+
+REGRAS DE FORMATACAO:
+- Use emojis nos bullets: ✈️ chegada, 🚗 transfer, 🏨 hotel/check-in, 🧳 check-out, 🛫 partida, 🎫 passeio, 🌙 noite livre
+- NAO use negrito no Pre-Roteiro (pode usar no orcamento para totais)
+- Responda em portugues, sem travessao
+- Valores de hospedagem sao SEMPRE aproximados — indique isso
+- NUNCA sugira hoteis especificos (responsabilidade da Consultora)
+- Inclua os links dos passeios
+- NUNCA altere a distribuicao de passeios nos dias — o sistema ja calculou
+- NUNCA invente passeios, atividades ou restaurantes que nao estejam listados
+- Se ha aviso de passeios que nao couberam, coloque no INICIO do roteiro`
 
     // --- Call OpenAI API (GPT-4.1) ---
     const openaiKey = Deno.env.get("OPENAI_API_KEY")
