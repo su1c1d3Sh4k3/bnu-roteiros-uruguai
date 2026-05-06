@@ -15,8 +15,6 @@ async function getSystemPromptBase(supabase: ReturnType<typeof createClient>): P
   return KNOWLEDGE
 }
 
-const ITINERARY_RULES_FALLBACK = "REGRAS ABSOLUTAS: (1) Cada passeio ocupa 1 dia inteiro — NUNCA coloque 2 passeios no mesmo dia. (2) Dia 1 (chegada) e ultimo dia (partida) nao tem passeio. (3) Apresente APENAS os passeios listados em PASSEIOS QUE CABEM NO ROTEIRO. NUNCA invente atividades, restaurantes ou outras atracoes. (4) Nao use negrito no Pre-Roteiro. (5) Use emojis nos bullets. (6) Responda em portugues sem travessao. (7) Valores de hospedagem sao SEMPRE aproximados — indicar isso claramente. (8) NUNCA sugira hoteis especificos — isso e responsabilidade exclusiva da Consultora Especialista."
-
 async function getItineraryRules(supabase: ReturnType<typeof createClient>): Promise<string> {
   try {
     const { data, error } = await supabase
@@ -26,11 +24,16 @@ async function getItineraryRules(supabase: ReturnType<typeof createClient>): Pro
       .single()
     if (!error && data?.system_prompt) return data.system_prompt
   } catch (_) { /* fallback */ }
-  return ITINERARY_RULES_FALLBACK
+  return ""
+}
+
+// Helper: get weekday name in Portuguese
+function getDiaSemana(date: Date): string {
+  const dias = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"]
+  return dias[date.getDay()]
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
   }
@@ -46,7 +49,6 @@ serve(async (req) => {
     }
 
     const token = authHeader.replace("Bearer ", "")
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -100,27 +102,25 @@ serve(async (req) => {
     }
 
     // --- Fetch catalogs ---
-    const { data: tours } = await supabase
-      .from("tours")
-      .select("*")
-      .eq("ativo", true)
-      .order("sort_order")
+    const [toursRes, citiesRes, profilesRes, transfersRes, hotelPricesRes] = await Promise.all([
+      supabase.from("tours").select("*").eq("ativo", true).order("sort_order"),
+      supabase.from("cities").select("*").order("sort_order"),
+      supabase.from("travel_profiles").select("*").order("sort_order"),
+      supabase.from("transfers").select("*").eq("ativo", true).order("sort_order"),
+      supabase.from("hotel_prices").select("*"),
+    ])
 
-    const { data: cities } = await supabase
-      .from("cities")
-      .select("*")
-      .order("sort_order")
+    const tours = toursRes.data || []
+    const cities = citiesRes.data || []
+    const profiles = profilesRes.data || []
+    const transfers = transfersRes.data || []
+    const hotelPrices = hotelPricesRes.data || []
 
-    const { data: profiles } = await supabase
-      .from("travel_profiles")
-      .select("*")
-      .order("sort_order")
-
-    // --- Build prompt (exact same logic as original JSX) ---
+    // --- Build data maps ---
     const total = (answers.adultos || 1) + (answers.criancas || 0)
 
     const citiesMap: Record<string, string> = {}
-    for (const c of (cities || [])) {
+    for (const c of cities) {
       citiesMap[c.id] = c.nome
     }
 
@@ -129,7 +129,7 @@ serve(async (req) => {
       .map(([k, v]) => `${citiesMap[k] || k}: ${v} noites`)
       .join(", ")
 
-    // Calculate total nights
+    // Calculate total nights and trip dates
     const parseDate = (str: string): Date | null => {
       if (!str) return null
       const [d, m, y] = str.split("/")
@@ -142,34 +142,43 @@ serve(async (req) => {
       ? Math.round((tripEnd.getTime() - tripStart.getTime()) / 86400000)
       : (answers.dias_total && answers.dias_total > 1 ? answers.dias_total - 1 : 0)
 
-    const diasDisponiveisParaPasseios = totalNights
+    const totalDays = totalNights + 1
+
+    // Build day-by-day calendar with weekdays
+    let calendarioStr = ""
+    if (tripStart && totalDays > 0) {
+      const linhas: string[] = []
+      for (let i = 0; i < totalDays; i++) {
+        const d = new Date(tripStart.getTime() + i * 86400000)
+        const dateStr = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`
+        const diaSemana = getDiaSemana(d)
+        let label = `Dia ${i + 1}`
+        if (i === 0) label += " (CHEGADA)"
+        if (i === totalDays - 1) label += " (PARTIDA)"
+        linhas.push(`${label}: ${dateStr} - ${diaSemana}`)
+      }
+      calendarioStr = linhas.join("\n")
+    }
 
     // Map tour IDs to tour objects
-    const toursMap: Record<string, { id: string; nome: string; valor_por_pessoa: number }> = {}
-    for (const t of (tours || [])) {
+    const toursMap: Record<string, typeof tours[0]> = {}
+    for (const t of tours) {
       toursMap[t.id] = t
     }
 
+    // Build detailed tour info for selected tours (ALL of them, no slicing)
     const passeiosIds: string[] = answers.passeios || []
-    const passeiosValidos = passeiosIds.slice(0, Math.max(0, diasDisponiveisParaPasseios))
-    const passeiosCortados = passeiosIds.slice(Math.max(0, diasDisponiveisParaPasseios))
-
-    const passeiosSel = passeiosValidos
-      .map((id) => toursMap[id]?.nome)
+    const passeiosDetalhados = passeiosIds
+      .map((id) => {
+        const t = toursMap[id]
+        if (!t) return null
+        return `- ${t.nome} | Tipo: ${t.tipo_passeio || "Diurno"} | Preço: R$${t.valor_por_pessoa} | Duração: ${t.duration || "N/A"} | Saída: ${t.horario_saida || "N/A"} | Retorno: ${t.horario_retorno || "N/A"} | Disponibilidade: ${t.disponibilidade || "todos os dias"} | Cidade de partida: ${citiesMap[t.cidade_base] || t.cidade_base} | Link: ${t.link_url || "N/A"}`
+      })
       .filter(Boolean)
-      .join(", ")
-
-    const passeiosNaoEncaixados = passeiosCortados
-      .map((id) => toursMap[id]?.nome)
-      .filter(Boolean)
-      .join(", ")
-
-    const avisoPasseios = passeiosNaoEncaixados
-      ? `ATENCAO: Os seguintes passeios NAO foram incluidos no roteiro pois nao ha dias suficientes: ${passeiosNaoEncaixados}. Informe isso claramente ao cliente no inicio do Pre-Roteiro com um aviso de destaque.`
-      : ""
+      .join("\n")
 
     // Map profile
-    const profileLabel = (profiles || []).find((p: { id: string; label: string }) => p.id === answers.perfil)?.label || answers.perfil || "nao informado"
+    const profileLabel = profiles.find((p: { id: string; label: string }) => p.id === answers.perfil)?.label || answers.perfil || "nao informado"
 
     // Occasion
     const ocasiao = answers.ocasiao_especial?.startsWith("Sim")
@@ -185,72 +194,81 @@ serve(async (req) => {
     const hotelStr = answers.hotel_estrelas ? `${answers.hotel_estrelas} estrelas` : "nao informado"
     const hotelPref = answers.hotel_nome || answers.hotel_opcao || "quer sugestoes"
 
-    const prompt = `Crie um PRE-ROTEIRO dia a dia e um PRE-ORCAMENTO completo.
+    // Build transfers pricing string
+    const transfersStr = transfers.map(t => {
+      const prices: string[] = []
+      if (t.price_1_2 > 0) prices.push(`1-2 pax: R$${t.price_1_2}`)
+      if (t.price_3_6 > 0) prices.push(`3-6 pax: R$${t.price_3_6}`)
+      if (t.price_7_11 > 0) prices.push(`7-11 pax: R$${t.price_7_11}`)
+      if (t.price_12_15 > 0) prices.push(`12-15 pax: R$${t.price_12_15}`)
+      return `- ${t.nome}: ${prices.join(" | ")}`
+    }).join("\n")
 
+    // Build hotel pricing string
+    const hotelPricingStr = hotelPrices.map(h => {
+      return `- ${citiesMap[h.city_id] || h.city_id} ${h.hotel_style_id}★: ~R$${h.price_per_night}/noite por pessoa (${h.season_note || ""})`
+    }).join("\n")
+
+    // --- Build the prompt (clean, without conflicting hardcoded rules) ---
+    const prompt = `Crie um PRE-ROTEIRO dia a dia e um PRE-ORCAMENTO completo para esta viagem.
+
+═══════════════════════════════════════
 DADOS DA VIAGEM:
+═══════════════════════════════════════
 Nome: ${answers.nome}
 Perfil: ${profileLabel}
 Adultos: ${answers.adultos || 1} | Criancas: ${answers.criancas || 0} | Total: ${total} pessoas
 Datas: ${datasStr}
 Total de noites: ${totalNights || "nao informado"}
+Total de dias: ${totalDays}
 Cidades e noites: ${cidadesStr || "a definir"}
 Hotel: ${hotelStr} | ${hotelPref}
-PASSEIOS QUE CABEM NO ROTEIRO (um por dia, maximo ${diasDisponiveisParaPasseios} passeio${diasDisponiveisParaPasseios !== 1 ? "s" : ""}): ${passeiosSel || "nenhum selecionado"}
-${avisoPasseios}
 Ocasiao especial: ${ocasiao}
-Orcamento: ${answers.orcamento || "flexivel"}
+Orcamento por pessoa: ${answers.orcamento || "flexivel"}
 Observacoes: ${answers.extras || "nenhuma"}
 
-REGRAS ABSOLUTAS DO ROTEIRO:
-1. CADA PASSEIO OCUPA UM DIA INTEIRO. Nunca coloque 2 passeios no mesmo dia.
-2. O Dia 1 (chegada) e o ultimo dia (partida) NAO TEM passeio — sao dias de viagem.
-3. Passeios de Bodega e City Tours sao passeios independentes — nunca combine dois no mesmo dia.
-4. O roteiro e composto SOMENTE por: check-in/check-out no hotel, transfers e os passeios listados acima. NADA mais.
-5. Se houver aviso de passeios nao encaixados, exiba no inicio: "⚠️ Aviso: [passeio] nao foi incluido pois nao ha dias suficientes."
-6. Nao use negrito no Pre-Roteiro.
-7. Use emojis nos bullets: hotel=🏨, transfer=🚗, check-in=🛎️, check-out=🧳, chegada=✈️, partida=🛫, vinho=🍷, noite livre=🌙
+═══════════════════════════════════════
+CALENDARIO DA VIAGEM (dias da semana):
+═══════════════════════════════════════
+${calendarioStr || "Datas nao informadas - considere dias genericos"}
 
-REGRA DE DISTRIBUICAO DE NOITES POR CIDADE (CRITICA — SIGA EXATAMENTE):
-- "X noites em CidadeA" significa que o cliente dorme X vezes em CidadeA, ou seja, acorda X vezes na CidadeA.
-- O cliente so muda de cidade DEPOIS de ter completado todas as noites previstas naquela cidade.
-- EXEMPLO CORRETO para "4 noites Montevideo + 1 noite Punta del Este" em viagem de 23/03 a 28/03:
-  - Noite 1: 23→24 em Montevideo (dorme em Montevideo)
-  - Noite 2: 24→25 em Montevideo (dorme em Montevideo)
-  - Noite 3: 25→26 em Montevideo (dorme em Montevideo)
-  - Noite 4: 26→27 em Montevideo (dorme em Montevideo) ← quarta noite em Montevideo
-  - Dia 5 (27/03): check-out Montevideo, viagem para Punta del Este
-  - Noite 5: 27→28 em Punta del Este (dorme em Punta) ← unica noite em Punta
-  - Dia 6 (28/03): check-out Punta, partida
-- ERRO A EVITAR: nao antecipar a mudanca de cidade. Se sao 4 noites em Montevideo, o cliente SEM FAIL deve dormir 4 vezes em Montevideo antes de ir para a proxima cidade.
-- Applique essa logica para qualquer combinacao de cidades e noites.
+═══════════════════════════════════════
+PASSEIOS SELECIONADOS PELO CLIENTE:
+═══════════════════════════════════════
+${passeiosDetalhados || "Nenhum passeio selecionado"}
 
+Observacao: Consulte as REGRAS do system prompt para saber o Tipo (Diurno/Noturno/Dia Todo), disponibilidade por dia da semana, e horarios de cada passeio. Distribua os passeios nos dias disponiveis respeitando todas as regras.
+
+═══════════════════════════════════════
+TABELA DE PRECOS DE TRANSFERS (por trecho, valor do grupo):
+═══════════════════════════════════════
+${transfersStr}
+
+═══════════════════════════════════════
+TABELA DE PRECOS DE HOSPEDAGEM (valor APROXIMADO por pessoa/noite):
+═══════════════════════════════════════
+${hotelPricingStr}
+
+═══════════════════════════════════════
+INSTRUCOES DE FORMATO:
+═══════════════════════════════════════
 Gere SOMENTE as duas secoes abaixo:
 
 ## Pre-Roteiro
 
-### Dia 1 - Chegada - [cidade inicial]
-- ✈️ Chegada
-- 🚗 Transfer aeroporto ao hotel (se contratado)
-- 🛎️ Check-in no hotel
-- 🌙 Noite livre
-
-(para cada cidade subsequente, o cliente so se muda apos completar todas as noites previstas na cidade anterior)
-
-### Dia [ultimo] - Partida - [cidade final]
-- 🧳 Check-out
-- 🚗 Transfer ao aeroporto (se contratado)
-- ✈️ Retorno ao Brasil
+Para cada dia, use o formato:
+### Dia X - [data] ([dia da semana]) - [cidade]
+(bullets com emojis: hotel=🏨, transfer=🚗, check-in=🛎️, check-out=🧳, chegada=✈️, partida=🛫, passeio=🎫, noite livre=🌙)
 
 ## Pre-Orcamento Estimado
 
 Liste com emojis:
-- 🎫 Passeios: apenas os passeios que cabem no roteiro, valor por pessoa e total
-- 🚗 Transfers: aeroporto ida+volta e entre cidades se aplicavel
-- 🏨 Hospedagem: por cidade, noites x valor/pessoa = subtotal (valor aproximado)
-- TOTAL POR PESSOA e TOTAL DO GRUPO em destaque
+- 🎫 Passeios: cada passeio com valor por pessoa e link
+- 🚗 Transfers: aeroporto ida+volta e entre cidades se aplicavel (valor do grupo)
+- 🏨 Hospedagem: por cidade, noites x valor/pessoa = subtotal (valor APROXIMADO)
+- 💰 TOTAL POR PESSOA e TOTAL DO GRUPO em destaque`
 
-Calcule o orcamento apenas com os passeios que cabem no roteiro (nao incluir os que foram cortados). Use valores exatos da base de dados.`
-
+    // --- Fetch system prompt + itinerary rules from DB ---
     const [promptBase, itineraryRules] = await Promise.all([
       getSystemPromptBase(supabase),
       getItineraryRules(supabase),

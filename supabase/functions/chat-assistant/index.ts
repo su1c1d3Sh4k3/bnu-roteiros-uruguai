@@ -105,11 +105,12 @@ serve(async (req) => {
       )
     }
 
-    // --- Fetch itinerary + answers + messages ---
-    const [itinRes, answersRes, messagesRes] = await Promise.all([
+    // --- Fetch itinerary + answers + messages + tours ---
+    const [itinRes, answersRes, messagesRes, toursRes] = await Promise.all([
       supabase.from("itineraries").select("id, generated_result").eq("id", itinerary_id).eq("user_id", userId).single(),
       supabase.from("itinerary_answers").select("nome, email, perfil, adultos, criancas, data_ida, data_volta, dias_total, cidades, hotel_estrelas, hotel_opcao, hotel_nome, passeios, ocasiao_especial, ocasiao_detalhe, orcamento, extras").eq("itinerary_id", itinerary_id).single(),
       supabase.from("chat_messages").select("role, content").eq("itinerary_id", itinerary_id).order("created_at", { ascending: true }).limit(50),
+      supabase.from("tours").select("id, nome, valor_por_pessoa, cidade_base, duration, link_url, tipo_passeio, disponibilidade, horario_saida, horario_retorno").eq("ativo", true),
     ])
 
     const itinerary = itinRes.data
@@ -122,6 +123,13 @@ serve(async (req) => {
 
     const answers = answersRes.data
     const existingMessages = messagesRes.data
+    const allTours = toursRes.data || []
+
+    // Build tour ID → name map for resolving IDs
+    const toursMap: Record<string, { nome: string; valor_por_pessoa: number; cidade_base: string; duration: string; link_url: string; tipo_passeio: string; disponibilidade: string; horario_saida: string; horario_retorno: string }> = {}
+    for (const t of allTours) {
+      toursMap[t.id] = t
+    }
 
     // --- Save user message ---
     const { error: insertUserError } = await supabase
@@ -162,7 +170,16 @@ serve(async (req) => {
       if (answers.data_ida) itineraryContext += `Periodo: ${answers.data_ida} a ${answers.data_volta || "N/A"} (${answers.dias_total || "?"} dias)\n`
       if (answers.cidades) itineraryContext += `Cidades: ${JSON.stringify(answers.cidades)}\n`
       if (answers.hotel_estrelas) itineraryContext += `Hotel: ${answers.hotel_estrelas} estrelas${answers.hotel_opcao ? ` (${answers.hotel_opcao})` : ""}${answers.hotel_nome ? ` - ${answers.hotel_nome}` : ""}\n`
-      if (answers.passeios) itineraryContext += `Passeios escolhidos: ${Array.isArray(answers.passeios) ? answers.passeios.join(", ") : JSON.stringify(answers.passeios)}\n`
+      if (answers.passeios) {
+        const passeiosList = Array.isArray(answers.passeios) ? answers.passeios : []
+        const passeiosNomes = passeiosList
+          .map((id: string) => {
+            const t = toursMap[id]
+            return t ? `${t.nome} (R$${t.valor_por_pessoa}, ${t.duration || "N/A"}, ${t.link_url || ""})` : id
+          })
+          .join(", ")
+        itineraryContext += `Passeios escolhidos: ${passeiosNomes}\n`
+      }
       if (answers.ocasiao_especial) itineraryContext += `Ocasiao especial: ${answers.ocasiao_detalhe || answers.ocasiao_especial}\n`
       if (answers.orcamento) itineraryContext += `Orcamento: ${answers.orcamento}\n`
       if (answers.extras) itineraryContext += `Extras: ${answers.extras}\n`

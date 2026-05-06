@@ -14,6 +14,10 @@ interface Tour {
   private_pricing: Record<string, number>;
   ativo: boolean;
   sort_order: number;
+  tipo_passeio: string;
+  disponibilidade: string;
+  horario_saida: string;
+  horario_retorno: string;
 }
 
 interface City {
@@ -34,6 +38,10 @@ const EMPTY_TOUR: Omit<Tour, 'id'> = {
   private_pricing: {},
   ativo: true,
   sort_order: 0,
+  tipo_passeio: 'Diurno',
+  disponibilidade: 'todos os dias',
+  horario_saida: '',
+  horario_retorno: '',
 };
 
 const inputStyle: React.CSSProperties = {
@@ -127,6 +135,10 @@ export default function TourManager() {
       private_pricing: editing.private_pricing,
       ativo: editing.ativo,
       sort_order: editing.sort_order,
+      tipo_passeio: editing.tipo_passeio,
+      disponibilidade: editing.disponibilidade,
+      horario_saida: editing.horario_saida,
+      horario_retorno: editing.horario_retorno,
     };
 
     let error;
@@ -182,7 +194,7 @@ export default function TourManager() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-              {['', 'Nome', 'Preço/pessoa', 'Duração', 'Cidade Base', 'Status', 'Ações'].map(h => (
+              {['', 'Nome', 'Preço/pessoa', 'Tipo', 'Duração', 'Cidade Base', 'Status', 'Ações'].map(h => (
                 <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
               ))}
             </tr>
@@ -201,6 +213,15 @@ export default function TourManager() {
                 </td>
                 <td style={{ padding: '12px 16px', fontSize: 14, color: '#1E293B', fontWeight: 600 }}>
                   R$ {t.valor_por_pessoa?.toFixed(2)}
+                </td>
+                <td style={{ padding: '12px 16px' }}>
+                  <span style={{
+                    padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                    background: t.tipo_passeio === 'Noturno' ? '#EDE9FE' : t.tipo_passeio === 'Dia Todo' ? '#FEF3C7' : '#DBEAFE',
+                    color: t.tipo_passeio === 'Noturno' ? '#5B21B6' : t.tipo_passeio === 'Dia Todo' ? '#92400E' : '#1E40AF',
+                  }}>
+                    {t.tipo_passeio || 'Diurno'}
+                  </span>
                 </td>
                 <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748B' }}>{t.duration || '—'}</td>
                 <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748B' }}>
@@ -267,6 +288,30 @@ export default function TourManager() {
               <div>
                 <label style={labelStyle}>Duração</label>
                 <input style={inputStyle} value={editing.duration} onChange={e => setEditing(p => p ? { ...p, duration: e.target.value } : p)} placeholder="ex: 4h, 9h" />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Tipo do Passeio</label>
+                <select style={{ ...inputStyle }} value={editing.tipo_passeio} onChange={e => setEditing(p => p ? { ...p, tipo_passeio: e.target.value } : p)}>
+                  <option value="Diurno">Diurno</option>
+                  <option value="Noturno">Noturno</option>
+                  <option value="Dia Todo">Dia Todo</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Disponibilidade</label>
+                <input style={inputStyle} value={editing.disponibilidade} onChange={e => setEditing(p => p ? { ...p, disponibilidade: e.target.value } : p)} placeholder="ex: todos os dias, terça a domingo" />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Horário de Saída</label>
+                <input style={inputStyle} value={editing.horario_saida} onChange={e => setEditing(p => p ? { ...p, horario_saida: e.target.value } : p)} placeholder="ex: 8h, 10h, 20h" />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Horário de Retorno</label>
+                <input style={inputStyle} value={editing.horario_retorno} onChange={e => setEditing(p => p ? { ...p, horario_retorno: e.target.value } : p)} placeholder="ex: 12h30, ~18h, 00h" />
               </div>
 
               <div>
