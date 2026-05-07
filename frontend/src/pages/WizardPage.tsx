@@ -380,7 +380,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
           const partes: string[] = [];
           if (triplo > 0) partes.push(`${triplo} quarto${triplo > 1 ? 's' : ''} triplo${triplo > 1 ? 's' : ''}`);
           if (duplo > 0) partes.push(`${duplo} quarto${duplo > 1 ? 's' : ''} duplo${duplo > 1 ? 's' : ''}`);
-          if (individual > 0) partes.push(`${individual} quarto${individual > 1 ? 's' : ''} individual${individual > 1 ? 'is' : ''}`);
+          if (individual > 0) partes.push(`${individual} quarto${individual > 1 ? 's' : ''} individua${individual > 1 ? 'is' : 'l'}`);
           combos.push({ individual, duplo, triplo, label: partes.join(' + ') });
         }
       }
