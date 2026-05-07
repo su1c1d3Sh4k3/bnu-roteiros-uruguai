@@ -398,8 +398,6 @@ serve(async (req) => {
       ? `${answers.data_ida} a ${answers.data_volta}`
       : (answers.dias_total ? `${answers.dias_total} dias (${totalNights} noites)` : "flexivel")
 
-    // Hotel string
-    const hotelStr = answers.hotel_estrelas ? `${answers.hotel_estrelas} estrelas` : "nao informado"
     const hotelPref = answers.hotel_nome || answers.hotel_opcao || "quer sugestoes"
 
     // Build transfers pricing string
@@ -412,10 +410,64 @@ serve(async (req) => {
       return `- ${t.nome}: ${prices.join(" | ")}`
     }).join("\n")
 
-    // Build hotel pricing string
-    const hotelPricingStr = hotelPrices.map(h => {
-      return `- ${citiesMap[h.city_id] || h.city_id} ${h.hotel_style_id}★: ~R$${h.price_per_night}/noite por pessoa (${h.season_note || ""})`
-    }).join("\n")
+    // Build hotel pricing string based on room configuration
+    const hotelQuartos = (answers.hotel_quartos || {}) as Record<string, number>
+    const qtdIndividual = hotelQuartos.individual || 0
+    const qtdDuplo = hotelQuartos.duplo || 0
+    const qtdTriplo = hotelQuartos.triplo || 0
+    const roomTypeLabels: Record<string, string> = { individual: "Individual", duplo: "Duplo", triplo: "Triplo" }
+
+    // Build a map for quick price lookup: city_id -> hotel_style_id -> room_type -> price
+    const priceMap: Record<string, Record<string, Record<string, { price: number; note: string }>>> = {}
+    for (const h of hotelPrices) {
+      if (!priceMap[h.city_id]) priceMap[h.city_id] = {}
+      if (!priceMap[h.city_id][h.hotel_style_id]) priceMap[h.city_id][h.hotel_style_id] = {}
+      priceMap[h.city_id][h.hotel_style_id][h.room_type] = { price: Number(h.price_per_night), note: h.season_note || "" }
+    }
+
+    // Build detailed hotel pricing string for the selected room types
+    const hotelPricingLines: string[] = []
+    const hotelEstrelas = answers.hotel_estrelas || "4"
+    const cidadesDoRoteiro = Object.keys(cidadesObj)
+
+    // Summary of room configuration
+    const quartosResumo: string[] = []
+    if (qtdIndividual > 0) quartosResumo.push(`${qtdIndividual} individual${qtdIndividual > 1 ? "is" : ""}`)
+    if (qtdDuplo > 0) quartosResumo.push(`${qtdDuplo} duplo${qtdDuplo > 1 ? "s" : ""}`)
+    if (qtdTriplo > 0) quartosResumo.push(`${qtdTriplo} triplo${qtdTriplo > 1 ? "s" : ""}`)
+    const quartosResumoStr = quartosResumo.join(" + ")
+
+    for (const cityId of cidadesDoRoteiro) {
+      if (cityId === "outro") continue
+      const cityName = citiesMap[cityId] || cityId
+      const cityPrices = priceMap[cityId]
+      if (!cityPrices || !cityPrices[hotelEstrelas]) continue
+
+      const noites = Number(cidadesObj[cityId]) || 0
+      const lineParts: string[] = []
+
+      for (const [roomType, qtd] of [["individual", qtdIndividual], ["duplo", qtdDuplo], ["triplo", qtdTriplo]] as [string, number][]) {
+        if (qtd <= 0) continue
+        const priceData = cityPrices[hotelEstrelas]?.[roomType]
+        if (!priceData) {
+          lineParts.push(`${roomTypeLabels[roomType]}: NAO DISPONIVEL`)
+          continue
+        }
+        const custoPorNoite = priceData.price * qtd
+        const custoTotal = custoPorNoite * noites
+        const pessoasNoQuarto = roomType === "individual" ? 1 : roomType === "duplo" ? 2 : 3
+        lineParts.push(`${qtd}x ${roomTypeLabels[roomType]} (${pessoasNoQuarto}p): R$${priceData.price}/pessoa/noite x ${qtd} quartos x ${noites} noites = R$${custoTotal}`)
+      }
+
+      const seasonNote = cityPrices[hotelEstrelas]?.["duplo"]?.note || ""
+      hotelPricingLines.push(`- ${cityName} ${hotelEstrelas}★ (${noites} noites): ${lineParts.join(" | ")}${seasonNote ? ` [${seasonNote}]` : ""}`)
+    }
+    const hotelPricingStr = hotelPricingLines.join("\n")
+
+    // Hotel string (must be after quartosResumoStr)
+    const hotelStr = answers.hotel_estrelas
+      ? `${answers.hotel_estrelas} estrelas (${quartosResumoStr})`
+      : "nao informado"
 
     // --- Generate Pre-Roteiro in code (deterministic, not AI-dependent) ---
     const preRoteiro: string[] = []
@@ -526,6 +578,7 @@ TRANSFERS NECESSARIOS (valores por grupo):
 ${transfersStr}
 
 HOSPEDAGEM (valores APROXIMADOS por pessoa/noite):
+Configuracao de quartos: ${quartosResumoStr} (${total} pessoas)
 ${hotelPricingStr}
 Cidades e noites: ${cidadesStr}
 Hotel selecionado: ${hotelStr}
@@ -537,7 +590,9 @@ INSTRUCOES PARA O ORCAMENTO:
 4. Calcule TOTAL POR PESSOA e TOTAL DO GRUPO com emoji 💰
 5. Valores de hospedagem sao APROXIMADOS — mencione isso
 6. Se o total extrapolar o orcamento do cliente, avise com ⚠️ e sugira ajustes
-7. Use o valor de transfer correto da tabela para o numero de pessoas do grupo`
+7. Use o valor de transfer correto da tabela para o numero de pessoas do grupo
+8. Para hospedagem, use os valores EXATOS da tabela acima (ja calculados por tipo de quarto). NAO recalcule - apenas copie os totais.
+9. Detalhe no orcamento a configuracao dos quartos (ex: "2 quartos duplos + 1 individual")`
 
     // DEBUG: log the suggested schedule
     console.log("[GENERATE] Suggested schedule:\n" + suggestedScheduleStr)

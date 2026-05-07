@@ -80,6 +80,7 @@ export interface ItineraryAnswers {
   hotel_estrelas: string;
   hotel_opcao: string;
   hotel_nome: string;
+  hotel_quartos: Record<string, number>;
   passeios: string[];
   ocasiao_especial: string;
   ocasiao_detalhe: string;
@@ -113,6 +114,7 @@ export interface WizardAnswers {
   hotel_estrelas?: string;
   hotel_opcao?: string;
   hotel_nome?: string;
+  hotel_quartos?: Record<string, number>;
   passeios?: string[];
   ocasiao_especial?: string;
   ocasiao_detalhe?: string;

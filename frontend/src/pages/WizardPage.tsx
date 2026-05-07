@@ -367,19 +367,77 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     </div>
   );
 
-  if (stepId === 3) return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <NumberInput label="Adultos *" value={answers.adultos || 1} onChange={v => update('adultos', v)} min={1} max={50} />
-        <NumberInput label="Crianças (até 11 anos)" value={answers.criancas || 0} onChange={v => update('criancas', v)} min={0} max={20} />
-      </div>
-      {(answers.criancas || 0) > 0 && (
-        <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 12, padding: 12, fontSize: 13 }}>
-          Crianças até 12 anos não pagam ingresso na Casapueblo. Há passeios especialmente indicados para famílias.
+  if (stepId === 3) {
+    const totalPessoas = (answers.adultos || 1) + (answers.criancas || 0);
+
+    // Generate all valid room combinations for the total number of people
+    const gerarCombinacoes = (total: number): { individual: number; duplo: number; triplo: number; label: string }[] => {
+      const combos: { individual: number; duplo: number; triplo: number; label: string }[] = [];
+      for (let triplo = Math.floor(total / 3); triplo >= 0; triplo--) {
+        const restante = total - triplo * 3;
+        for (let duplo = Math.floor(restante / 2); duplo >= 0; duplo--) {
+          const individual = restante - duplo * 2;
+          const partes: string[] = [];
+          if (triplo > 0) partes.push(`${triplo} quarto${triplo > 1 ? 's' : ''} triplo${triplo > 1 ? 's' : ''}`);
+          if (duplo > 0) partes.push(`${duplo} quarto${duplo > 1 ? 's' : ''} duplo${duplo > 1 ? 's' : ''}`);
+          if (individual > 0) partes.push(`${individual} quarto${individual > 1 ? 's' : ''} individual${individual > 1 ? 'is' : ''}`);
+          combos.push({ individual, duplo, triplo, label: partes.join(' + ') });
+        }
+      }
+      return combos;
+    };
+
+    const combinacoes = gerarCombinacoes(totalPessoas);
+    const quartosSelecionados = answers.hotel_quartos || {};
+    const quartoKey = (q: { individual: number; duplo: number; triplo: number }) => `${q.individual}-${q.duplo}-${q.triplo}`;
+    const selectedKey = quartoKey(quartosSelecionados as unknown as { individual: number; duplo: number; triplo: number });
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <NumberInput label="Adultos *" value={answers.adultos || 1} onChange={v => { update('adultos', v); update('hotel_quartos', {}); }} min={1} max={50} />
+          <NumberInput label="Crianças (até 11 anos)" value={answers.criancas || 0} onChange={v => { update('criancas', v); update('hotel_quartos', {}); }} min={0} max={20} />
         </div>
-      )}
-    </div>
-  );
+        {(answers.criancas || 0) > 0 && (
+          <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 12, padding: 12, fontSize: 13 }}>
+            Crianças até 12 anos não pagam ingresso na Casapueblo. Há passeios especialmente indicados para famílias.
+          </div>
+        )}
+        {totalPessoas >= 1 && (
+          <>
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: '#1E293B', marginBottom: 4 }}>Configuração de quartos</div>
+              <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 12px' }}>
+                Para {totalPessoas} pessoa{totalPessoas > 1 ? 's' : ''}, escolha a distribuição de quartos:
+              </p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {combinacoes.map(combo => {
+                const key = quartoKey(combo);
+                const isSelected = selectedKey === key;
+                const totalQuartos = combo.individual + combo.duplo + combo.triplo;
+                return (
+                  <div key={key} onClick={() => update('hotel_quartos', { individual: combo.individual, duplo: combo.duplo, triplo: combo.triplo })}
+                    style={{ border: `2px solid ${isSelected ? '#0D3B8C' : '#E2E8F0'}`, borderRadius: 14, padding: '14px 18px', cursor: 'pointer', background: isSelected ? '#EFF6FF' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'all 0.2s' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 22 }}>{totalQuartos === 1 ? '🛏️' : '🏨'}</span>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#1E293B' }}>{combo.label}</div>
+                        <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                          {totalQuartos} quarto{totalQuartos > 1 ? 's' : ''} no total
+                        </div>
+                      </div>
+                    </div>
+                    {isSelected && <div style={{ color: '#0D3B8C', fontSize: 20, fontWeight: 800 }}>✓</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
 
   if (stepId === 4) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -704,6 +762,7 @@ export default function WizardPage() {
               hotel_estrelas: answersData.hotel_estrelas || '',
               hotel_opcao: answersData.hotel_opcao || '',
               hotel_nome: answersData.hotel_nome || '',
+              hotel_quartos: answersData.hotel_quartos || {},
               passeios: answersData.passeios || [],
               ocasiao_especial: answersData.ocasiao_especial || '',
               ocasiao_detalhe: answersData.ocasiao_detalhe || '',
@@ -767,6 +826,7 @@ export default function WizardPage() {
           hotel_estrelas: answers.hotel_estrelas || '',
           hotel_opcao: answers.hotel_opcao || '',
           hotel_nome: answers.hotel_nome || '',
+          hotel_quartos: answers.hotel_quartos || {},
           passeios: answers.passeios || [],
           ocasiao_especial: answers.ocasiao_especial || '',
           ocasiao_detalhe: answers.ocasiao_detalhe || '',
@@ -866,7 +926,7 @@ export default function WizardPage() {
   const canAdvance = () => {
     if (step === 0) return !!(answers.nome?.trim() && answers.whatsapp?.trim() && answers.email?.trim());
     if (step === 1) return !!answers.perfil;
-    if (step === 2) return (answers.adultos || 0) >= 1;
+    if (step === 2) return (answers.adultos || 0) >= 1 && !!(answers.hotel_quartos && Object.keys(answers.hotel_quartos).length > 0 && ((answers.hotel_quartos as Record<string, number>).individual > 0 || (answers.hotel_quartos as Record<string, number>).duplo > 0 || (answers.hotel_quartos as Record<string, number>).triplo > 0));
     if (step === 3) return answers.datas_definidas !== undefined;
     if (step === 4) return Object.keys(answers.cidades || {}).length > 0;
     if (step === 5) return !!answers.hotel_estrelas;

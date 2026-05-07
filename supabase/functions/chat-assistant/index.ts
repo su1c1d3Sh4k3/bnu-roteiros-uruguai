@@ -169,7 +169,15 @@ serve(async (req) => {
       itineraryContext += `Adultos: ${answers.adultos || 0}, Criancas: ${answers.criancas || 0}\n`
       if (answers.data_ida) itineraryContext += `Periodo: ${answers.data_ida} a ${answers.data_volta || "N/A"} (${answers.dias_total || "?"} dias)\n`
       if (answers.cidades) itineraryContext += `Cidades: ${JSON.stringify(answers.cidades)}\n`
-      if (answers.hotel_estrelas) itineraryContext += `Hotel: ${answers.hotel_estrelas} estrelas${answers.hotel_opcao ? ` (${answers.hotel_opcao})` : ""}${answers.hotel_nome ? ` - ${answers.hotel_nome}` : ""}\n`
+      if (answers.hotel_estrelas) {
+        const hq = (answers.hotel_quartos || {}) as Record<string, number>
+        const quartosInfo: string[] = []
+        if (hq.individual > 0) quartosInfo.push(`${hq.individual} individual${hq.individual > 1 ? "is" : ""}`)
+        if (hq.duplo > 0) quartosInfo.push(`${hq.duplo} duplo${hq.duplo > 1 ? "s" : ""}`)
+        if (hq.triplo > 0) quartosInfo.push(`${hq.triplo} triplo${hq.triplo > 1 ? "s" : ""}`)
+        const quartosStr = quartosInfo.length > 0 ? ` - Quartos: ${quartosInfo.join(" + ")}` : ""
+        itineraryContext += `Hotel: ${answers.hotel_estrelas} estrelas${quartosStr}${answers.hotel_opcao ? ` (${answers.hotel_opcao})` : ""}${answers.hotel_nome ? ` - ${answers.hotel_nome}` : ""}\n`
+      }
       if (answers.passeios) {
         const passeiosList = Array.isArray(answers.passeios) ? answers.passeios : []
         const passeiosNomes = passeiosList

@@ -168,12 +168,24 @@ Em vez de transfer privativo, o cliente pode usar o City Tour como transporte + 
 - SEMPRE mencionar essa opção quando o cliente perguntar sobre locomoção entre cidades.
 
 ═══════════════════════════════════════
-HOTÉIS (valores APROXIMADOS por pessoa/noite, quarto duplo):
+HOTÉIS (valores APROXIMADOS por pessoa/noite):
 ═══════════════════════════════════════
+Quarto Individual (1 pessoa):
+Montevideo: 3★ ~R$470 | 4★ ~R$555 | 5★ ~R$1.100
+Punta del Este: 3★ ~R$470 | 4★ ~R$680 | 5★ ~R$1.700
+Colonia: 3★ ~R$620 | 4★ ~R$685 | 5★ ~R$940
+
+Quarto Duplo (2 pessoas):
 Montevideo: 3★ ~R$235 | 4★ ~R$300 | 5★ ~R$600
 Punta del Este: 3★ ~R$250 | 4★ ~R$300 | 5★ ~R$850
 Colonia: 3★ ~R$315 | 4★ ~R$340 | 5★ ~R$470
-Obs: Julho +20% Mvd/Colonia. Dez/Jan +20% Mvd/Colonia e +40% Punta.
+
+Quarto Triplo (3 pessoas):
+Montevideo: 3★ ~R$214 | 4★ ~R$260 | 5★ ~R$570
+Punta del Este: 3★ ~R$230 | 4★ ~R$340 | 5★ NÃO DISPONÍVEL
+Colonia: 3★ ~R$235 | 4★ ~R$350 | 5★ ~R$420
+
+Obs: Julho e feriados +20% Mvd/Colonia. Dez/Jan +20% Mvd/Colonia e +40% Punta.
 
 Melhores bairros para hospedagem em Montevideo: Pocitos, Punta Carretas, Buceo (restaurantes, shopping, praias). Centro (mais econômico). Carrasco (luxo, perto do aeroporto).
 Punta del Este: Peninsula (centro), La Barra (jovem), José Ignacio (exclusivo).
