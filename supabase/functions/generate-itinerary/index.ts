@@ -250,18 +250,42 @@ serve(async (req) => {
     let passeiosIds: string[] = answers.passeios || []
 
     // ═══════ FILTRAR PASSEIOS COM BASE NAS REGRAS MULTI-DESTINO ═══════
+    const cidadesOrdemIds = Object.keys(cidadesObj)
+    const firstCity = cidadesOrdemIds[0] || ""
+
+    // PONTO 9/8: Não oferecer City Tour de cidade já visitada
+    // Se o cliente JÁ esteve em PDE antes de MVD, remover city_pde
+    const pdeIdx = cidadesOrdemIds.indexOf("pde")
+    const mvdIdx = cidadesOrdemIds.indexOf("mvd")
+    const colIdx = cidadesOrdemIds.indexOf("col")
+    if (pdeIdx >= 0 && mvdIdx >= 0 && pdeIdx < mvdIdx && passeiosIds.includes("city_pde")) {
+      passeiosIds = passeiosIds.filter(id => id !== "city_pde")
+      multiDestWarnings.push("O City Tour Punta del Este foi removido do roteiro. Você já estará hospedado em Punta del Este antes de Montevideo, então já conhecerá a cidade.")
+    }
+    // Se o cliente JÁ esteve em COL antes de MVD, remover city_col
+    if (colIdx >= 0 && mvdIdx >= 0 && colIdx < mvdIdx && passeiosIds.includes("city_col")) {
+      passeiosIds = passeiosIds.filter(id => id !== "city_col")
+      multiDestWarnings.push("O City Tour Colonia del Sacramento foi removido do roteiro. Você já estará hospedado em Colonia del Sacramento antes de Montevideo, então já conhecerá a cidade.")
+    }
+
+    // PONTO 7: Day Tour PDE só se PDE é a primeira cidade (chegada direta)
+    if (passeiosIds.includes("daytour_pde") && firstCity !== "pde") {
+      passeiosIds = passeiosIds.filter(id => id !== "daytour_pde")
+      multiDestWarnings.push("O Day Tour Punta del Este foi removido do roteiro. Este passeio é indicado apenas para quem vai direto para Punta del Este no dia da chegada ao Uruguai.")
+    }
+
     if (hasThreeCities) {
-      // Remover City Tour Punta (incompatível: saída de MVD, cliente hospedado em PDE)
+      // Remover City Tour Punta se ainda presente (saída de MVD, cliente hospedado em PDE)
       if (passeiosIds.includes("city_pde")) {
         passeiosIds = passeiosIds.filter(id => id !== "city_pde")
         multiDestWarnings.push("O City Tour Punta del Este foi removido do roteiro. Este passeio tem saída de Montevideo e como você estará hospedado em Punta del Este, o ideal é fazer o Day Tour de Punta del Este, que sai da própria cidade.")
       }
-      // Sugerir Day Tour Punta se não selecionado
-      if (!passeiosIds.includes("daytour_pde")) {
+      // Sugerir Day Tour Punta se não selecionado e PDE é primeira cidade
+      if (!passeiosIds.includes("daytour_pde") && firstCity === "pde") {
         multiDestWarnings.push("Sugestão: como você estará hospedado em Punta del Este, recomendamos incluir o Day Tour de Punta del Este (R$370/pessoa) para conhecer o melhor da cidade, incluindo o pôr do sol na Casapueblo.")
       }
-      // Garantir City Tour Colonia como transporte MVD → COL
-      if (!passeiosIds.includes("city_col")) {
+      // Garantir City Tour Colonia como transporte MVD → COL (se não foi removido por regra de cidade já visitada)
+      if (!passeiosIds.includes("city_col") && mvdIdx >= 0 && colIdx >= 0 && mvdIdx < colIdx) {
         passeiosIds.push("city_col")
         multiDestWarnings.push("O City Tour Colonia del Sacramento foi adicionado ao roteiro como meio de deslocamento de Montevideo para Colonia del Sacramento (mais econômico que transfer privativo).")
       }
@@ -339,6 +363,11 @@ serve(async (req) => {
           if (cityOnDay !== t.cidade_base) continue
           if (!isDayAvailable(diaSemana, t.disponibilidade || "todos os dias")) continue
 
+          // PONTO 5: Em dias de mudança de cidade (transfer), só permitir Noturno
+          // (exceto se este tour É o tour de transporte designado)
+          const isCityChangeDay = i > 0 && citySchedule[i] !== citySchedule[i - 1]
+          if (isCityChangeDay && tipo !== "Noturno") continue
+
           diasPossiveis.push(i)
         }
       }
@@ -376,22 +405,64 @@ serve(async (req) => {
       }
 
       // Restringir diasPossiveis do tour de transporte ao dia de transição
+      // PONTO 3: Se o dia exato não funciona, tentar o último dia disponível em MVD
       if (transportTransitionDay >= 0) {
         for (const ta of tourAllocations) {
           if (ta.id === transportTourId) {
-            ta.diasPossiveis = ta.diasPossiveis.filter(d => d === transportTransitionDay)
+            // Primeiro tentar o dia de transição exato
+            const exactDay = ta.diasPossiveis.filter(d => d === transportTransitionDay)
 
-            if (ta.diasPossiveis.length === 0) {
-              // Dia de transição não é compatível com disponibilidade do tour
-              const transDate = new Date(tripStart.getTime() + transportTransitionDay * 86400000)
-              const diaSemana = getDiaSemana(transDate)
-              const dateStr = `${String(transDate.getDate()).padStart(2, "0")}/${String(transDate.getMonth() + 1).padStart(2, "0")}`
-              if (ta.id === "city_col") {
-                multiDestWarnings.push(`O City Tour Colonia del Sacramento (deslocamento Montevideo → Colonia) acontece apenas às terças, quintas e sábados. O dia de transição do roteiro (${dateStr}) cai em ${diaSemana}. Sugerimos ajustar as datas da viagem para que este dia coincida com terça, quinta ou sábado.`)
+            if (exactDay.length > 0) {
+              ta.diasPossiveis = exactDay
+            } else {
+              // Dia exato não disponível — procurar o último dia disponível em MVD antes da transição
+              const fallbackDays = ta.diasPossiveis.filter(d => d <= transportTransitionDay && citySchedule[d] === transSourceCity)
+              if (fallbackDays.length > 0) {
+                const bestDay = fallbackDays[fallbackDays.length - 1] // último dia disponível
+                ta.diasPossiveis = [bestDay]
+                // Ajustar citySchedule: mover noites de MVD para COL
+                // Do bestDay+1 até transportTransitionDay, trocar de MVD para COL
+                for (let adj = bestDay + 1; adj <= transportTransitionDay; adj++) {
+                  if (citySchedule[adj] === transSourceCity) {
+                    citySchedule[adj] = transDestCity
+                  }
+                }
+                transportTransitionDay = bestDay
+                const bestDate = new Date(tripStart.getTime() + bestDay * 86400000)
+                const bestDateStr = `${String(bestDate.getDate()).padStart(2, "0")}/${String(bestDate.getMonth() + 1).padStart(2, "0")}`
+                const bestDiaSemana = getDiaSemana(bestDate)
+                multiDestWarnings.push(`O City Tour Colonia del Sacramento foi agendado em ${bestDateStr} (${bestDiaSemana}) para coincidir com um dia disponível. As noites foram redistribuídas automaticamente entre Montevideo e Colonia del Sacramento.`)
+              } else {
+                // Nenhum dia disponível em MVD — fallback com transfer regular
+                ta.diasPossiveis = []
+                const transDate = new Date(tripStart.getTime() + transportTransitionDay * 86400000)
+                const diaSemana = getDiaSemana(transDate)
+                const dateStr = `${String(transDate.getDate()).padStart(2, "0")}/${String(transDate.getMonth() + 1).padStart(2, "0")}`
+                if (ta.id === "city_col") {
+                  multiDestWarnings.push(`O City Tour Colonia del Sacramento (deslocamento Montevideo → Colonia) acontece apenas às terças, quintas e sábados. Nenhum dia de Montevideo no roteiro coincide com esses dias. Sugerimos ajustar as datas da viagem ou utilizar transfer privativo.`)
+                }
               }
             }
           }
         }
+      }
+    }
+
+    // Após ajuste de citySchedule (Ponto 3), revalidar diasPossiveis de todos os tours
+    // pois dias que eram MVD podem ter virado COL, e city change days podem ter mudado
+    if (tripStart && totalDays > 0) {
+      for (const ta of tourAllocations) {
+        if (ta.id === transportTourId) continue // transport já foi restringido
+        const t = toursMap[ta.id]
+        if (!t) continue
+        const tipo = t.tipo_passeio || "Diurno"
+        ta.diasPossiveis = ta.diasPossiveis.filter(d => {
+          const cityOnDay = citySchedule[d] || ""
+          if (cityOnDay !== t.cidade_base) return false
+          // Revalidar regra Ponto 5: sem diurno em dia de mudança de cidade
+          if (d > 0 && citySchedule[d] !== citySchedule[d - 1] && tipo !== "Noturno") return false
+          return true
+        })
       }
     }
 
@@ -402,7 +473,19 @@ serve(async (req) => {
     const dayAssignments: Map<number, string[]> = new Map() // day -> tour names
     const unallocated: string[] = []
 
+    // Pré-alocar tour de transporte (prioridade máxima)
+    const preAssigned = new Set<string>()
+    if (transportTourId) {
+      const transportTour = tourAllocations.find(ta => ta.id === transportTourId)
+      if (transportTour && transportTour.diasPossiveis.length > 0) {
+        const day = transportTour.diasPossiveis[0]
+        dayAssignments.set(day, [transportTour.nome])
+        preAssigned.add(transportTour.nome)
+      }
+    }
+
     for (const tour of tourAllocations) {
+      if (preAssigned.has(tour.nome)) continue
       if (tour.diasPossiveis.length === 0) {
         unallocated.push(tour.nome)
         continue
@@ -622,14 +705,17 @@ serve(async (req) => {
 
         preRoteiro.push(`### Dia ${i + 1} - ${dateStr} (${diaSemana}) - ${cityName}`)
 
+        // PONTO 1: Van compartilhada para 1 pessoa, transfer privativo para 2+
+        const transferLabel = total === 1 ? "Van compartilhada" : "Transfer"
+
         if (isArrival) {
           // Arrival: handle non-MVD first city (3-city scenario starts in PDE)
           if (hasThreeCities && cityOnDay === "pde") {
             preRoteiro.push(`- \u2708\uFE0F Chegada no Aeroporto de Montevideo`)
-            preRoteiro.push(`- \uD83D\uDE97 Transfer Aeroporto de Montevideo \u2192 hotel em ${cityName}`)
+            preRoteiro.push(`- \uD83D\uDE97 ${transferLabel} Aeroporto de Montevideo \u2192 hotel em ${cityName}`)
           } else {
             preRoteiro.push(`- \u2708\uFE0F Chegada em ${cityName}`)
-            preRoteiro.push(`- \uD83D\uDE97 Transfer aeroporto \u2192 hotel`)
+            preRoteiro.push(`- \uD83D\uDE97 ${transferLabel} aeroporto \u2192 hotel`)
           }
           preRoteiro.push(`- \uD83D\uDECE\uFE0F Check-in no hotel`)
           for (const tourName of assigned) {
@@ -645,9 +731,9 @@ serve(async (req) => {
           // Departure: handle non-MVD last city
           preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel${cityOnDay !== "mvd" ? " em " + cityName : ""}`)
           if ((hasThreeCities && cityOnDay === "col") || (hasMvdPde && cityOnDay === "pde")) {
-            preRoteiro.push(`- \uD83D\uDE97 Transfer ${cityName} \u2192 Aeroporto de Montevideo`)
+            preRoteiro.push(`- \uD83D\uDE97 ${transferLabel} ${cityName} \u2192 Aeroporto de Montevideo`)
           } else {
-            preRoteiro.push(`- \uD83D\uDE97 Transfer hotel \u2192 aeroporto`)
+            preRoteiro.push(`- \uD83D\uDE97 ${transferLabel} hotel \u2192 aeroporto`)
           }
           preRoteiro.push(`- \uD83D\uDEEB Partida`)
         } else {
