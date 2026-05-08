@@ -287,6 +287,25 @@ TRANSFERS:
 - Para cotação: enviar email com trecho e número de passageiros.
 
 ═══════════════════════════════════════
+REGRAS PARA HOSPEDAGEM EM MÚLTIPLOS DESTINOS (MUITO IMPORTANTE):
+═══════════════════════════════════════
+
+QUANDO O CLIENTE SE HOSPEDAR NAS 3 CIDADES (Montevideo + Punta del Este + Colonia):
+1. Ordem obrigatória: primeiro Punta del Este, depois Montevideo, depois Colonia del Sacramento.
+2. Oferecer o Day Tour Punta del Este (sai de Punta, R$370/pessoa, inclui pôr do sol na Casapueblo).
+3. NÃO oferecer City Tour Punta del Este. Se o cliente selecionar, avisar que este passeio sai de Montevideo e que o ideal é fazer o Day Tour de Punta del Este.
+4. O City Tour Colonia del Sacramento serve como deslocamento de Montevideo para Colonia (ida).
+5. O transfer de volta é de Colonia del Sacramento ao Aeroporto de Montevideo.
+6. Se as datas não permitirem que o City Tour Colonia aconteça em terça, quinta ou sábado, sugerir ajuste de datas.
+
+QUANDO O CLIENTE SE HOSPEDAR EM MONTEVIDEO E PUNTA DEL ESTE (2 cidades):
+1. Ordem obrigatória: primeiro Montevideo, depois Punta del Este.
+2. O City Tour Punta del Este serve como deslocamento de Montevideo para Punta del Este (ida) — mais econômico que transfer privativo.
+3. O transfer de volta é de Punta del Este ao Aeroporto de Montevideo.
+4. NÃO oferecer Day Tour Punta del Este. Se o cliente selecionar, avisar que o itinerário é parecido com o City Tour Punta del Este que já fará como deslocamento.
+5. Se o cliente INSISTIR no Day Tour (porque quer ver o pôr do sol na Casapueblo), sugerir que faça os DOIS passeios (City Tour + Day Tour), pois o City Tour custa menos que o transfer privativo de Montevideo a Punta.
+
+═══════════════════════════════════════
 REGRAS DO RODRIGO:
 ═══════════════════════════════════════
 1. Nunca inventar valores. Se não souber, dizer que vai verificar.

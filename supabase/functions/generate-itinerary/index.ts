@@ -176,7 +176,35 @@ serve(async (req) => {
       citiesMap[c.id] = c.nome
     }
 
-    const cidadesObj = (answers.cidades || {}) as Record<string, number>
+    let cidadesObj = (answers.cidades || {}) as Record<string, number>
+
+    // ═══════ REGRAS PARA HOSPEDAGEM EM MÚLTIPLOS DESTINOS ═══════
+    const selectedCityIds = Object.keys(cidadesObj)
+    const hasThreeCities = selectedCityIds.includes("mvd") && selectedCityIds.includes("pde") && selectedCityIds.includes("col")
+    const hasMvdPde = selectedCityIds.includes("mvd") && selectedCityIds.includes("pde") && !selectedCityIds.includes("col")
+    const multiDestWarnings: string[] = []
+
+    if (hasThreeCities) {
+      // 3 cidades: ordem obrigatória Punta → Montevideo → Colonia
+      const reordered: Record<string, number> = {}
+      reordered["pde"] = cidadesObj["pde"]
+      reordered["mvd"] = cidadesObj["mvd"]
+      reordered["col"] = cidadesObj["col"]
+      for (const [k, v] of Object.entries(cidadesObj)) {
+        if (!(k in reordered)) reordered[k] = v as number
+      }
+      cidadesObj = reordered
+    } else if (hasMvdPde) {
+      // 2 cidades MVD+PDE: ordem obrigatória Montevideo → Punta
+      const reordered: Record<string, number> = {}
+      reordered["mvd"] = cidadesObj["mvd"]
+      reordered["pde"] = cidadesObj["pde"]
+      for (const [k, v] of Object.entries(cidadesObj)) {
+        if (!(k in reordered)) reordered[k] = v as number
+      }
+      cidadesObj = reordered
+    }
+
     const cidadesStr = Object.entries(cidadesObj)
       .map(([k, v]) => `${citiesMap[k] || k}: ${v} noites`)
       .join(", ")
@@ -219,7 +247,36 @@ serve(async (req) => {
     }
 
     // Build detailed tour info for selected tours (ALL of them, no slicing)
-    const passeiosIds: string[] = answers.passeios || []
+    let passeiosIds: string[] = answers.passeios || []
+
+    // ═══════ FILTRAR PASSEIOS COM BASE NAS REGRAS MULTI-DESTINO ═══════
+    if (hasThreeCities) {
+      // Remover City Tour Punta (incompatível: saída de MVD, cliente hospedado em PDE)
+      if (passeiosIds.includes("city_pde")) {
+        passeiosIds = passeiosIds.filter(id => id !== "city_pde")
+        multiDestWarnings.push("O City Tour Punta del Este foi removido do roteiro. Este passeio tem saída de Montevideo e como você estará hospedado em Punta del Este, o ideal é fazer o Day Tour de Punta del Este, que sai da própria cidade.")
+      }
+      // Sugerir Day Tour Punta se não selecionado
+      if (!passeiosIds.includes("daytour_pde")) {
+        multiDestWarnings.push("Sugestão: como você estará hospedado em Punta del Este, recomendamos incluir o Day Tour de Punta del Este (R$370/pessoa) para conhecer o melhor da cidade, incluindo o pôr do sol na Casapueblo.")
+      }
+      // Garantir City Tour Colonia como transporte MVD → COL
+      if (!passeiosIds.includes("city_col")) {
+        passeiosIds.push("city_col")
+        multiDestWarnings.push("O City Tour Colonia del Sacramento foi adicionado ao roteiro como meio de deslocamento de Montevideo para Colonia del Sacramento (mais econômico que transfer privativo).")
+      }
+    } else if (hasMvdPde) {
+      // Remover Day Tour Punta (similar ao City Tour Punta usado como transporte)
+      if (passeiosIds.includes("daytour_pde")) {
+        passeiosIds = passeiosIds.filter(id => id !== "daytour_pde")
+        multiDestWarnings.push("O Day Tour Punta del Este foi removido do roteiro pois o itinerário é similar ao City Tour Punta del Este, que será utilizado como deslocamento de Montevideo para Punta del Este. Se deseja incluir o Day Tour mesmo assim (para ver o pôr do sol na Casapueblo), entre em contato — incluiremos ambos os passeios, já que o custo do City Tour é menor que o do transfer privativo.")
+      }
+      // Garantir City Tour Punta como transporte MVD → PDE
+      if (!passeiosIds.includes("city_pde")) {
+        passeiosIds.push("city_pde")
+        multiDestWarnings.push("O City Tour Punta del Este foi adicionado ao roteiro como meio de deslocamento de Montevideo para Punta del Este (mais econômico que transfer privativo).")
+      }
+    }
 
     // Pre-calculate which days each tour can be scheduled on
     // Build city schedule: which city is the client in on each day
@@ -299,6 +356,43 @@ serve(async (req) => {
         link: t.link_url || "N/A",
         diasPossiveis,
       })
+    }
+
+    // ═══════ RESTRINGIR TOUR DE TRANSPORTE AO DIA DE TRANSIÇÃO ═══════
+    let transportTourId: string | null = null
+    let transportTransitionDay = -1
+
+    if ((hasThreeCities || hasMvdPde) && tripStart && totalDays > 0) {
+      const transSourceCity = "mvd"
+      const transDestCity = hasThreeCities ? "col" : "pde"
+      transportTourId = hasThreeCities ? "city_col" : "city_pde"
+
+      // Encontrar o último dia na cidade de origem antes da cidade de destino
+      for (let i = 1; i < citySchedule.length; i++) {
+        if (citySchedule[i - 1] === transSourceCity && citySchedule[i] === transDestCity) {
+          transportTransitionDay = i - 1
+          break
+        }
+      }
+
+      // Restringir diasPossiveis do tour de transporte ao dia de transição
+      if (transportTransitionDay >= 0) {
+        for (const ta of tourAllocations) {
+          if (ta.id === transportTourId) {
+            ta.diasPossiveis = ta.diasPossiveis.filter(d => d === transportTransitionDay)
+
+            if (ta.diasPossiveis.length === 0) {
+              // Dia de transição não é compatível com disponibilidade do tour
+              const transDate = new Date(tripStart.getTime() + transportTransitionDay * 86400000)
+              const diaSemana = getDiaSemana(transDate)
+              const dateStr = `${String(transDate.getDate()).padStart(2, "0")}/${String(transDate.getMonth() + 1).padStart(2, "0")}`
+              if (ta.id === "city_col") {
+                multiDestWarnings.push(`O City Tour Colonia del Sacramento (deslocamento Montevideo → Colonia) acontece apenas às terças, quintas e sábados. O dia de transição do roteiro (${dateStr}) cai em ${diaSemana}. Sugerimos ajustar as datas da viagem para que este dia coincida com terça, quinta ou sábado.`)
+              }
+            }
+          }
+        }
+      }
     }
 
     // Sort by fewest options first (constraint propagation)
@@ -472,6 +566,14 @@ serve(async (req) => {
     // --- Generate Pre-Roteiro in code (deterministic, not AI-dependent) ---
     const preRoteiro: string[] = []
 
+    // Add multi-destination warnings
+    if (multiDestWarnings.length > 0) {
+      for (const warning of multiDestWarnings) {
+        preRoteiro.push(`\u26A0\uFE0F ${warning}`)
+      }
+      preRoteiro.push("")
+    }
+
     // Add warning for unallocated tours
     if (unallocated.length > 0) {
       for (const name of unallocated) {
@@ -486,8 +588,8 @@ serve(async (req) => {
 
     // Generate each day
     if (tripStart && totalDays > 0) {
-      // Determine which day the city changes happen
       let currentCity = citySchedule[0]
+      let prevWasTransportTour = false
 
       for (let i = 0; i < totalDays; i++) {
         const d = new Date(tripStart.getTime() + i * 86400000)
@@ -503,13 +605,33 @@ serve(async (req) => {
         const prevCity = i > 0 ? citySchedule[i - 1] : cityOnDay
         const cityChanged = cityOnDay !== prevCity
 
+        // Detect transport tour on this day
+        const nextCity = (i + 1 < totalDays) ? citySchedule[i + 1] : null
+        const isTransportTourDay = transportTourId !== null && assigned.some(name => {
+          const ta = tourAllocations.find(t => t.nome === name)
+          return ta && ta.id === transportTourId
+        }) && nextCity && nextCity !== cityOnDay
+        const transportDestCityName = isTransportTourDay ? (citiesMap[nextCity!] || nextCity) : null
+
+        // Detect failed transport (tour expected but not allocated — need fallback transfer)
+        const isFailedTransportDay = !isTransportTourDay && i === transportTransitionDay &&
+          transportTourId !== null && nextCity !== null && nextCity !== cityOnDay
+
+        // Suppress city change if yesterday had transport (successful or fallback)
+        const suppressCityChange = cityChanged && prevWasTransportTour
+
         preRoteiro.push(`### Dia ${i + 1} - ${dateStr} (${diaSemana}) - ${cityName}`)
 
         if (isArrival) {
-          preRoteiro.push(`- \u2708\uFE0F Chegada em ${cityName}`)
-          preRoteiro.push(`- \uD83D\uDE97 Transfer aeroporto \u2192 hotel`)
+          // Arrival: handle non-MVD first city (3-city scenario starts in PDE)
+          if (hasThreeCities && cityOnDay === "pde") {
+            preRoteiro.push(`- \u2708\uFE0F Chegada no Aeroporto de Montevideo`)
+            preRoteiro.push(`- \uD83D\uDE97 Transfer Aeroporto de Montevideo \u2192 hotel em ${cityName}`)
+          } else {
+            preRoteiro.push(`- \u2708\uFE0F Chegada em ${cityName}`)
+            preRoteiro.push(`- \uD83D\uDE97 Transfer aeroporto \u2192 hotel`)
+          }
           preRoteiro.push(`- \uD83D\uDECE\uFE0F Check-in no hotel`)
-          // Check for noturno tour on arrival
           for (const tourName of assigned) {
             const ta = tourAllocations.find(t => t.nome === tourName)
             if (ta) {
@@ -520,38 +642,66 @@ serve(async (req) => {
             preRoteiro.push(`- \uD83C\uDF19 Noite livre`)
           }
         } else if (isDeparture) {
-          preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel`)
-          preRoteiro.push(`- \uD83D\uDE97 Transfer hotel \u2192 aeroporto`)
+          // Departure: handle non-MVD last city
+          preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel${cityOnDay !== "mvd" ? " em " + cityName : ""}`)
+          if ((hasThreeCities && cityOnDay === "col") || (hasMvdPde && cityOnDay === "pde")) {
+            preRoteiro.push(`- \uD83D\uDE97 Transfer ${cityName} \u2192 Aeroporto de Montevideo`)
+          } else {
+            preRoteiro.push(`- \uD83D\uDE97 Transfer hotel \u2192 aeroporto`)
+          }
           preRoteiro.push(`- \uD83D\uDEEB Partida`)
         } else {
-          // Check if we need check-out/transfer to new city
-          if (cityChanged) {
+          // ── City change: check-out, transfer, check-in (BEFORE tours) ──
+          if (cityChanged && !suppressCityChange) {
             const prevCityName = citiesMap[prevCity] || prevCity
             preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel em ${prevCityName}`)
+
+            // Regular transfer (not handled by transport tour or city tour)
+            if (!isTransportTourDay) {
+              const hasCityTourTransfer = assigned.some(n => n.toLowerCase().includes("city tour punta") || n.toLowerCase().includes("city tour colonia"))
+              if (!hasCityTourTransfer) {
+                preRoteiro.push(`- \uD83D\uDE97 Transfer ${prevCityName} \u2192 ${cityName}`)
+              }
+            }
+
+            preRoteiro.push(`- \uD83C\uDFE8 Check-in no hotel em ${cityName}`)
           }
 
+          // ── Transport tour day: check-out from current city ──
+          if (isTransportTourDay && !cityChanged) {
+            preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel em ${cityName}`)
+          }
+
+          // ── Tours ──
           if (assigned.length > 0) {
             for (const tourName of assigned) {
               const ta = tourAllocations.find(t => t.nome === tourName)
               if (ta) {
-                preRoteiro.push(`- \uD83C\uDFAB ${ta.nome} (${ta.saida} - ${ta.retorno}) ${ta.link}`)
+                const isTransport = isTransportTourDay && ta.id === transportTourId
+                const transportLabel = isTransport ? ` \u2014 deslocamento para ${transportDestCityName}` : ""
+                preRoteiro.push(`- \uD83C\uDFAB ${ta.nome} (${ta.saida} - ${ta.retorno})${transportLabel} ${ta.link}`)
               }
             }
-          } else {
+          } else if (!isFailedTransportDay) {
             preRoteiro.push(`- \uD83C\uDF19 Dia livre`)
           }
 
-          if (cityChanged && !assigned.some(n => n.toLowerCase().includes("city tour punta") || n.toLowerCase().includes("city tour colonia"))) {
-            // Need a transfer between cities
-            preRoteiro.push(`- \uD83D\uDE97 Transfer ${citiesMap[prevCity] || prevCity} \u2192 ${cityName}`)
+          // ── Transport tour: check-in to destination ──
+          if (isTransportTourDay) {
+            preRoteiro.push(`- \uD83C\uDFE8 Check-in no hotel em ${transportDestCityName}`)
           }
 
-          if (cityChanged) {
-            preRoteiro.push(`- \uD83C\uDFE8 Check-in no hotel em ${cityName}`)
+          // ── Fallback: transport tour failed, add regular transfer ──
+          if (isFailedTransportDay) {
+            const destCityName = citiesMap[nextCity!] || nextCity
+            preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel em ${cityName}`)
+            preRoteiro.push(`- \uD83D\uDE97 Transfer ${cityName} \u2192 ${destCityName}`)
+            preRoteiro.push(`- \uD83C\uDFE8 Check-in no hotel em ${destCityName}`)
           }
         }
 
         preRoteiro.push("")
+        prevWasTransportTour = !!isTransportTourDay || isFailedTransportDay
         currentCity = cityOnDay
       }
     }
