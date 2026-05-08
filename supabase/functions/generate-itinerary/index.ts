@@ -254,32 +254,24 @@ serve(async (req) => {
     const firstCity = cidadesOrdemIds[0] || ""
 
     // PONTO 9/8: Não oferecer City Tour de cidade já visitada
-    // Se o cliente JÁ esteve em PDE antes de MVD, remover city_pde
     const pdeIdx = cidadesOrdemIds.indexOf("pde")
     const mvdIdx = cidadesOrdemIds.indexOf("mvd")
     const colIdx = cidadesOrdemIds.indexOf("col")
     if (pdeIdx >= 0 && mvdIdx >= 0 && pdeIdx < mvdIdx && passeiosIds.includes("city_pde")) {
       passeiosIds = passeiosIds.filter(id => id !== "city_pde")
-      multiDestWarnings.push("O City Tour Punta del Este foi removido do roteiro. Você já estará hospedado em Punta del Este antes de Montevideo, então já conhecerá a cidade.")
+      // Mensagem específica para 3 cidades (regra original do cliente)
+      if (hasThreeCities) {
+        multiDestWarnings.push("O City Tour Punta del Este foi removido do roteiro. Este passeio tem saída de Montevideo e como você estará hospedado em Punta del Este, o ideal é fazer o Day Tour de Punta del Este, que sai da própria cidade.")
+      } else {
+        multiDestWarnings.push("O City Tour Punta del Este foi removido do roteiro. Você já estará hospedado em Punta del Este antes de Montevideo, então já conhecerá a cidade.")
+      }
     }
-    // Se o cliente JÁ esteve em COL antes de MVD, remover city_col
     if (colIdx >= 0 && mvdIdx >= 0 && colIdx < mvdIdx && passeiosIds.includes("city_col")) {
       passeiosIds = passeiosIds.filter(id => id !== "city_col")
       multiDestWarnings.push("O City Tour Colonia del Sacramento foi removido do roteiro. Você já estará hospedado em Colonia del Sacramento antes de Montevideo, então já conhecerá a cidade.")
     }
 
-    // PONTO 7: Day Tour PDE só se PDE é a primeira cidade (chegada direta)
-    if (passeiosIds.includes("daytour_pde") && firstCity !== "pde") {
-      passeiosIds = passeiosIds.filter(id => id !== "daytour_pde")
-      multiDestWarnings.push("O Day Tour Punta del Este foi removido do roteiro. Este passeio é indicado apenas para quem vai direto para Punta del Este no dia da chegada ao Uruguai.")
-    }
-
     if (hasThreeCities) {
-      // Remover City Tour Punta se ainda presente (saída de MVD, cliente hospedado em PDE)
-      if (passeiosIds.includes("city_pde")) {
-        passeiosIds = passeiosIds.filter(id => id !== "city_pde")
-        multiDestWarnings.push("O City Tour Punta del Este foi removido do roteiro. Este passeio tem saída de Montevideo e como você estará hospedado em Punta del Este, o ideal é fazer o Day Tour de Punta del Este, que sai da própria cidade.")
-      }
       // Sugerir Day Tour Punta se não selecionado e PDE é primeira cidade
       if (!passeiosIds.includes("daytour_pde") && firstCity === "pde") {
         multiDestWarnings.push("Sugestão: como você estará hospedado em Punta del Este, recomendamos incluir o Day Tour de Punta del Este (R$370/pessoa) para conhecer o melhor da cidade, incluindo o pôr do sol na Casapueblo.")
@@ -300,6 +292,13 @@ serve(async (req) => {
         passeiosIds.push("city_pde")
         multiDestWarnings.push("O City Tour Punta del Este foi adicionado ao roteiro como meio de deslocamento de Montevideo para Punta del Este (mais econômico que transfer privativo).")
       }
+    }
+
+    // PONTO 7: Day Tour PDE só se PDE é a primeira cidade (chegada direta)
+    // Roda DEPOIS dos blocos específicos (hasThreeCities/hasMvdPde) para não sobrepor mensagens
+    if (passeiosIds.includes("daytour_pde") && firstCity !== "pde") {
+      passeiosIds = passeiosIds.filter(id => id !== "daytour_pde")
+      multiDestWarnings.push("O Day Tour Punta del Este foi removido do roteiro. Este passeio é indicado apenas para quem vai direto para Punta del Este no dia da chegada ao Uruguai.")
     }
 
     // Pre-calculate which days each tour can be scheduled on
