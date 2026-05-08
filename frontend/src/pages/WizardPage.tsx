@@ -502,7 +502,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
         )}
         <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#92400E', lineHeight: 1.6, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <span style={{ fontSize: 18, flexShrink: 0 }}>💡</span>
-          <span>Lembrete: Se hospedar em mais de uma cidade em um período curto de viagem pode ser cansativo, além de aumentar o orçamento da viagem devido aos transfers para se locomover entre cidades.</span>
+          <span>Lembrete: Para viagens de 5 dias ou menos, sugerimos se hospedar apenas em Montevideo para que possa aproveitar melhor os passeios. Se hospedar em mais de uma cidade em um período curto pode ser cansativo, além de aumentar o orçamento devido aos transfers para se locomover entre cidades.</span>
         </div>
         <p style={{ fontSize: 13, color: '#64748B' }}>Selecione as cidades e informe quantas noites em cada uma:</p>
         {cities.map(c => (
