@@ -793,102 +793,151 @@ serve(async (req) => {
 
     const preRoteiroText = preRoteiro.join("\n")
 
-    // --- Build the prompt: AI only generates the budget section ---
-    const prompt = `O Pre-Roteiro abaixo ja foi gerado pelo sistema. Sua tarefa e APENAS gerar o "Pre-Orcamento Estimado" com base nos dados abaixo. Retorne o Pre-Roteiro INTACTO (copie exatamente) seguido do Pre-Orcamento que voce calcular.
+    // --- Build Pre-Orcamento in code (deterministic, no AI errors) ---
+    const budget: string[] = []
+    const transfersMap: Record<string, typeof transfers[0]> = {}
+    for (const t of transfers) transfersMap[t.id] = t
 
-## Pre-Roteiro
+    const getTransferPrice = (tr: typeof transfers[0]): number => {
+      if (total <= 2) return Number(tr.price_1_2) || 0
+      if (total <= 6) return Number(tr.price_3_6) || 0
+      if (total <= 11) return Number(tr.price_7_11) || 0
+      return Number(tr.price_12_15) || 0
+    }
 
-${preRoteiroText}
+    // Passeios
+    budget.push("## Pre-Orcamento Estimado")
+    budget.push("")
+    budget.push("### \uD83C\uDFAB Passeios")
+    const allocatedTours = tourAllocations.filter(ta => !unallocated.includes(ta.nome))
+    let totalPasseios = 0
+    for (const ta of allocatedTours) {
+      const custo = ta.preco * total
+      totalPasseios += custo
+      const nota = (ta.id === transportTourId) ? " (inclui deslocamento entre cidades)" : ""
+      budget.push(`- ${ta.nome}: R$${ta.preco}/pessoa x ${total} = R$${custo}${nota}`)
+      if (ta.link && ta.link !== "N/A") budget.push(`  ${ta.link}`)
+    }
+    if (allocatedTours.length === 0) budget.push("- Nenhum passeio incluido")
 
----
+    // Transfers
+    budget.push("")
+    budget.push("### \uD83D\uDE97 Transfers")
+    let totalTransfers = 0
 
-DADOS PARA CALCULO DO ORCAMENTO:
-- ${total} pessoas (${answers.adultos || 1} adultos, ${answers.criancas || 0} criancas)
-- Orcamento desejado pelo cliente: ${answers.orcamento || "flexivel"}
+    // Chegada
+    const arrivalCity = citySchedule[0]
+    if (total === 1 && transfersMap["Aeroporto_solo"]) {
+      const p = getTransferPrice(transfersMap["Aeroporto_solo"])
+      totalTransfers += p
+      budget.push(`- Van compartilhada aeroporto \u2192 hotel: R$${p}`)
+    } else if (arrivalCity === "pde" && transfersMap["aeroportomvd_punta"]) {
+      const p = getTransferPrice(transfersMap["aeroportomvd_punta"])
+      totalTransfers += p
+      budget.push(`- Transfer Aeroporto de Montevideo \u2192 Punta del Este: R$${p}`)
+    } else if (transfersMap["aeroporto_mvd"]) {
+      const p = getTransferPrice(transfersMap["aeroporto_mvd"])
+      totalTransfers += p
+      budget.push(`- Transfer aeroporto \u2192 hotel: R$${p}`)
+    }
 
-PASSEIOS INCLUIDOS NO ROTEIRO (valores por pessoa):
-${tourAllocations.filter(ta => !unallocated.includes(ta.nome)).map(ta => `- ${ta.nome}: R$${ta.preco}/pessoa (${ta.link})`).join("\n")}
+    // Transfers entre cidades (só os que NÃO são cobertos por city tour de transporte)
+    for (let ti = 1; ti < citySchedule.length; ti++) {
+      if (citySchedule[ti] !== citySchedule[ti - 1]) {
+        const from = citySchedule[ti - 1]
+        const to = citySchedule[ti]
+        // Pular se coberto pelo tour de transporte
+        if (transportTourId && (ti - 1) === transportTransitionDay) continue
+        let trId = ""
+        if ((from === "mvd" && to === "pde") || (from === "pde" && to === "mvd")) trId = "mvd_punta"
+        else if ((from === "mvd" && to === "col") || (from === "col" && to === "mvd")) trId = "mvd_colonia"
+        if (trId && transfersMap[trId]) {
+          const p = getTransferPrice(transfersMap[trId])
+          totalTransfers += p
+          budget.push(`- Transfer ${citiesMap[from] || from} \u2192 ${citiesMap[to] || to}: R$${p}`)
+        }
+      }
+    }
 
-TRANSFERS NECESSARIOS (valores por grupo):
-${transfersStr}
+    // Partida
+    const departCity = citySchedule[citySchedule.length - 1]
+    if (total === 1 && transfersMap["Aeroporto_solo"]) {
+      const p = getTransferPrice(transfersMap["Aeroporto_solo"])
+      totalTransfers += p
+      budget.push(`- Van compartilhada hotel \u2192 aeroporto: R$${p}`)
+    } else if (departCity === "pde" && transfersMap["mvd_punta"]) {
+      const p = getTransferPrice(transfersMap["mvd_punta"])
+      totalTransfers += p
+      budget.push(`- Transfer Punta del Este \u2192 Aeroporto de Montevideo: R$${p}`)
+    } else if (departCity === "col" && transfersMap["mvd_colonia"]) {
+      const p = getTransferPrice(transfersMap["mvd_colonia"])
+      totalTransfers += p
+      budget.push(`- Transfer Colonia del Sacramento \u2192 Aeroporto de Montevideo: R$${p}`)
+    } else if (transfersMap["aeroporto_mvd"]) {
+      const p = getTransferPrice(transfersMap["aeroporto_mvd"])
+      totalTransfers += p
+      budget.push(`- Transfer hotel \u2192 aeroporto: R$${p}`)
+    }
 
-IMPORTANTE SOBRE TRANSFERS:
-- Se o Pre-Roteiro mostra um City Tour como "deslocamento" entre cidades (ex: City Tour Punta del Este — deslocamento para Punta del Este), esse passeio JA INCLUI o transporte. NAO adicione um transfer privativo separado para esse trecho. O custo do deslocamento ja esta no valor do passeio.
-- So inclua transfers que aparecem explicitamente no Pre-Roteiro com "🚗 Transfer" ou "🚗 Van compartilhada".
+    // Hospedagem
+    budget.push("")
+    budget.push("### \uD83C\uDFE8 Hospedagem (valores APROXIMADOS)")
+    budget.push(`Configuracao de quartos: ${quartosResumoStr}`)
+    let totalHospedagem = 0
+    for (const cityId of Object.keys(cidadesObj)) {
+      if (cityId === "outro") continue
+      const cName = citiesMap[cityId] || cityId
+      const noites = Number(cidadesObj[cityId]) || 0
+      const cp = priceMap[cityId]
+      if (!cp || !cp[hotelEstrelas]) continue
+      let cityCost = 0
+      const parts: string[] = []
+      for (const [rt, qtd] of [["individual", qtdIndividual], ["duplo", qtdDuplo], ["triplo", qtdTriplo]] as [string, number][]) {
+        if (qtd <= 0) continue
+        const pd = cp[hotelEstrelas]?.[rt]
+        if (!pd) { parts.push(`${roomTypeLabels[rt]}: N/A`); continue }
+        const cost = pd.price * qtd * noites
+        cityCost += cost
+        parts.push(`${qtd}x ${roomTypeLabels[rt]} R$${pd.price}/noite x ${noites}n = R$${cost}`)
+      }
+      totalHospedagem += cityCost
+      const sn = cp[hotelEstrelas]?.["duplo"]?.note || ""
+      budget.push(`- ${cName} ${hotelEstrelas}\u2605 (${noites} noites): ${parts.join(" + ")}${sn ? ` [${sn}]` : ""}`)
+    }
 
-HOSPEDAGEM (valores APROXIMADOS por pessoa/noite):
-Configuracao de quartos: ${quartosResumoStr} (${total} pessoas)
-${hotelPricingStr}
-Cidades e noites: ${cidadesStr}
-Hotel selecionado: ${hotelStr}
+    // Totais
+    budget.push("")
+    budget.push("---")
+    budget.push("")
+    const totalGrupo = totalPasseios + totalTransfers + totalHospedagem
+    const totalPorPessoa = total > 0 ? Math.round(totalGrupo / total) : totalGrupo
+    budget.push("### \uD83D\uDCB0 Resumo")
+    budget.push(`- \uD83C\uDFAB Passeios: R$${totalPasseios}`)
+    budget.push(`- \uD83D\uDE97 Transfers: R$${totalTransfers}`)
+    budget.push(`- \uD83C\uDFE8 Hospedagem (aprox.): R$${totalHospedagem}`)
+    budget.push("")
+    budget.push(`**Total por pessoa: R$${totalPorPessoa}**`)
+    budget.push(`**Total do grupo (${total} pessoas): R$${totalGrupo}**`)
+    budget.push("")
+    budget.push("_Valores de hospedagem sao aproximados e podem variar conforme disponibilidade, datas e hotel escolhido._")
 
-INSTRUCOES PARA O ORCAMENTO:
-1. Copie o Pre-Roteiro acima EXATAMENTE como esta (incluindo avisos de passeios nao incluidos)
-2. Adicione "## Pre-Orcamento Estimado" depois do Pre-Roteiro
-3. Liste passeios com emoji 🎫, transfers com 🚗, hospedagem com 🏨
-4. Calcule TOTAL POR PESSOA e TOTAL DO GRUPO com emoji 💰
-5. Valores de hospedagem sao APROXIMADOS — mencione isso
-6. Se o total extrapolar o orcamento do cliente, avise com ⚠️ e sugira ajustes
-7. Use o valor de transfer correto da tabela para o numero de pessoas do grupo
-8. Para hospedagem, use os valores EXATOS da tabela acima (ja calculados por tipo de quarto). NAO recalcule - apenas copie os totais.
-9. Detalhe no orcamento a configuracao dos quartos (ex: "2 quartos duplos + 1 individual")`
+    // Aviso de orçamento
+    const orcamentoCliente = answers.orcamento || ""
+    const matchOrc = orcamentoCliente.match(/R\$\s*([\d.]+)/g)
+    if (matchOrc && matchOrc.length >= 2) {
+      const maxOrc = Number(matchOrc[matchOrc.length - 1].replace(/R\$\s*/, "").replace(/\./g, ""))
+      if (maxOrc > 0 && totalGrupo > maxOrc) {
+        budget.push("")
+        budget.push(`\u26A0\uFE0F O total estimado (R$${totalGrupo}) esta acima do orcamento desejado (${orcamentoCliente}). Sugerimos ajustar categoria de hotel, numero de noites ou avaliar transfers alternativos.`)
+      }
+    }
 
-    // DEBUG: log the suggested schedule
+    const budgetText = budget.join("\n")
+    const resultText = `## Pre-Roteiro\n\n${preRoteiroText}\n---\n\n${budgetText}`
+
+    // DEBUG
     console.log("[GENERATE] Suggested schedule:\n" + suggestedScheduleStr)
     if (unallocated.length > 0) console.log("[GENERATE] Unallocated:", unallocated.join(", "))
-
-    // --- Build system prompt: minimal, focused on formatting only ---
-    const systemPrompt = `Voce e um formatador de roteiros de viagem ao Uruguai para a agencia "Brasileiros no Uruguai" (BNU).
-
-SEU TRABALHO: Receber um roteiro pre-montado pelo sistema e formata-lo de forma bonita em markdown para o cliente.
-
-REGRAS DE FORMATACAO:
-- Use emojis nos bullets: ✈️ chegada, 🚗 transfer, 🏨 hotel/check-in, 🧳 check-out, 🛫 partida, 🎫 passeio, 🌙 noite livre
-- NAO use negrito no Pre-Roteiro (pode usar no orcamento para totais)
-- Responda em portugues, sem travessao
-- Valores de hospedagem sao SEMPRE aproximados — indique isso
-- NUNCA sugira hoteis especificos (responsabilidade da Consultora)
-- Inclua os links dos passeios
-- NUNCA altere a distribuicao de passeios nos dias — o sistema ja calculou
-- NUNCA invente passeios, atividades ou restaurantes que nao estejam listados
-- Se ha aviso de passeios que nao couberam, coloque no INICIO do roteiro`
-
-    // --- Call OpenAI API (GPT-4.1) ---
-    const openaiKey = Deno.env.get("OPENAI_API_KEY")
-    if (!openaiKey) {
-      return new Response(
-        JSON.stringify({ error: "Chave da API OpenAI nao configurada." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
-
-    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${openaiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4.1",
-        max_tokens: 4000,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: prompt },
-        ],
-      }),
-    })
-
-    if (!aiRes.ok) {
-      const errBody = await aiRes.text()
-      console.error("OpenAI API error:", aiRes.status, errBody)
-      return new Response(
-        JSON.stringify({ error: "Erro ao gerar roteiro com a IA." }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
-
-    const aiData = await aiRes.json()
-    const resultText = aiData.choices?.[0]?.message?.content || "Nao foi possivel gerar o roteiro. Entre em contato com nossa equipe."
 
     // --- Save result to DB + sync reordered cities/tours to answers ---
     // Atualizar answers.cidades com a ordem correta para que o Timeline do frontend reflita o roteiro
