@@ -99,6 +99,19 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export interface Combo {
+  id: string;
+  nome: string;
+  emoji: string;
+  description: string;
+  tour_ids: string[];
+  preco_combo: number;
+  dias_min: number;
+  image_url: string;
+  ativo: boolean;
+  sort_order: number;
+}
+
 export interface WizardAnswers {
   nome?: string;
   whatsapp?: string;
@@ -116,6 +129,7 @@ export interface WizardAnswers {
   hotel_nome?: string;
   hotel_quartos?: Record<string, number>;
   passeios?: string[];
+  combo_id?: string;
   ocasiao_especial?: string;
   ocasiao_detalhe?: string;
   ocasiao_data?: string;

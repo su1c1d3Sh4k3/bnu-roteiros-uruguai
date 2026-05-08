@@ -154,16 +154,18 @@ serve(async (req) => {
     }
 
     // --- Fetch catalogs ---
-    const [toursRes, citiesRes, profilesRes, transfersRes, hotelPricesRes] = await Promise.all([
+    const [toursRes, citiesRes, profilesRes, transfersRes, hotelPricesRes, combosRes] = await Promise.all([
       supabase.from("tours").select("*").eq("ativo", true).order("sort_order"),
       supabase.from("cities").select("*").order("sort_order"),
       supabase.from("travel_profiles").select("*").order("sort_order"),
       supabase.from("transfers").select("*").eq("ativo", true).order("sort_order"),
       supabase.from("hotel_prices").select("*"),
+      supabase.from("combos").select("*").eq("ativo", true),
     ])
 
     const tours = toursRes.data || []
     const cities = citiesRes.data || []
+    const allCombos = combosRes.data || []
     const profiles = profilesRes.data || []
     const transfers = transfersRes.data || []
     const hotelPrices = hotelPricesRes.data || []
@@ -805,18 +807,72 @@ serve(async (req) => {
       return Number(tr.price_12_15) || 0
     }
 
-    // Passeios
+    // Passeios (com suporte a combo)
     budget.push("## Pre-Orcamento Estimado")
     budget.push("")
     budget.push("### \uD83C\uDFAB Passeios")
     const allocatedTours = tourAllocations.filter(ta => !unallocated.includes(ta.nome))
     let totalPasseios = 0
-    for (const ta of allocatedTours) {
-      const custo = ta.preco * total
-      totalPasseios += custo
-      const nota = (ta.id === transportTourId) ? " (inclui deslocamento entre cidades)" : ""
-      const linkStr = (ta.link && ta.link !== "N/A") ? ` ${ta.link}` : ""
-      budget.push(`- ${ta.nome}: R$${ta.preco}/pessoa x ${total} = R$${custo}${nota}${linkStr}`)
+
+    // Verificar se tem combo selecionado
+    const comboId = (answers.combo_id || "") as string
+    const activeCombo = comboId ? allCombos.find((c: { id: string }) => c.id === comboId) : null
+    const comboTourIds = new Set<string>(activeCombo ? (activeCombo.tour_ids as string[]) : [])
+
+    if (activeCombo && comboTourIds.size > 0) {
+      // Verificar quantos tours do combo foram efetivamente alocados
+      const comboTours = allocatedTours.filter(ta => comboTourIds.has(ta.id))
+      const nonComboTours = allocatedTours.filter(ta => !comboTourIds.has(ta.id))
+      const allComboTourIds = activeCombo.tour_ids as string[]
+      const somaIndividualTotal = allComboTourIds.reduce((s: number, id: string) => {
+        const t = toursMap[id]
+        return s + (t ? Number(t.valor_por_pessoa) : 0)
+      }, 0)
+      const comboPreco = Number(activeCombo.preco_combo)
+
+      // Só aplicar combo se TODOS os tours foram alocados
+      if (comboTours.length === allComboTourIds.length) {
+        const custoCombo = comboPreco * total
+        totalPasseios += custoCombo
+        const economiaTotal = (somaIndividualTotal - comboPreco) * total
+        const descontoPct = somaIndividualTotal > 0 ? Math.round((1 - comboPreco / somaIndividualTotal) * 100) : 0
+
+        budget.push(`- \uD83C\uDFC6 ${activeCombo.nome}: R$${comboPreco}/pessoa x ${total} = R$${custoCombo}`)
+        for (const ta of comboTours) {
+          const nota = (ta.id === transportTourId) ? " (inclui deslocamento)" : ""
+          const linkStr = (ta.link && ta.link !== "N/A") ? ` ${ta.link}` : ""
+          budget.push(`  - ${ta.nome} (R$${ta.preco} individual)${nota}${linkStr}`)
+        }
+        budget.push(`  Economia: R$${economiaTotal} (${descontoPct}% de desconto)`)
+      } else {
+        // Combo incompleto: cobrar individualmente e avisar
+        budget.push(`- \u26A0\uFE0F ${activeCombo.nome}: combo nao aplicado (nem todos os passeios couberam no roteiro)`)
+        for (const ta of comboTours) {
+          const custo = ta.preco * total
+          totalPasseios += custo
+          const nota = (ta.id === transportTourId) ? " (inclui deslocamento entre cidades)" : ""
+          const linkStr = (ta.link && ta.link !== "N/A") ? ` ${ta.link}` : ""
+          budget.push(`- ${ta.nome}: R$${ta.preco}/pessoa x ${total} = R$${custo}${nota}${linkStr}`)
+        }
+      }
+
+      // Tours fora do combo
+      for (const ta of nonComboTours) {
+        const custo = ta.preco * total
+        totalPasseios += custo
+        const nota = (ta.id === transportTourId) ? " (inclui deslocamento entre cidades)" : ""
+        const linkStr = (ta.link && ta.link !== "N/A") ? ` ${ta.link}` : ""
+        budget.push(`- ${ta.nome}: R$${ta.preco}/pessoa x ${total} = R$${custo}${nota}${linkStr}`)
+      }
+    } else {
+      // Sem combo: listar individual
+      for (const ta of allocatedTours) {
+        const custo = ta.preco * total
+        totalPasseios += custo
+        const nota = (ta.id === transportTourId) ? " (inclui deslocamento entre cidades)" : ""
+        const linkStr = (ta.link && ta.link !== "N/A") ? ` ${ta.link}` : ""
+        budget.push(`- ${ta.nome}: R$${ta.preco}/pessoa x ${total} = R$${custo}${nota}${linkStr}`)
+      }
     }
     if (allocatedTours.length === 0) budget.push("- Nenhum passeio incluido")
 

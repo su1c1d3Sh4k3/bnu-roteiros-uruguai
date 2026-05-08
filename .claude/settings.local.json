@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -X POST https://avzuztbfowllcqjwobar.supabase.co/rest/v1/rpc -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF2enV6dGJmb3dsbGNxandvYmFyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTgyNzM3OCwiZXhwIjoyMDkxNDAzMzc4fQ.fvBKfnbnGb9Sin34795Vi33z3ExVkparlKggac7VAJo' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF2enV6dGJmb3dsbGNxandvYmFyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTgyNzM3OCwiZXhwIjoyMDkxNDAzMzc4fQ.fvBKfnbnGb9Sin34795Vi33z3ExVkparlKggac7VAJo' -H 'Content-Type: application/json')",
+      "Bash(curl:*)",
+      "Bash(npx supabase:*)",
+      "Bash(python3:*)"
+    ]
+  }
+}

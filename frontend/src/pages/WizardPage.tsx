@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useDebounce } from '../hooks/useDebounce';
-import type { WizardAnswers, City, Tour, HotelStyle, TravelProfile, BudgetRange } from '../types/database';
+import type { WizardAnswers, City, Tour, HotelStyle, TravelProfile, BudgetRange, Combo } from '../types/database';
 
 import faviconSrc from '../assets/favicon.png';
 const FAVICON_SRC = faviconSrc;
@@ -325,7 +325,7 @@ function ChatPanel({ messages, input, setInput, loading, onSend, endRef, onClose
 // STEP CONTENT
 // ═══════════════════════════════════════════════════════
 
-function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, travelProfiles, budgetRanges }: {
+function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, travelProfiles, budgetRanges, combos }: {
   stepId: number;
   answers: WizardAnswers;
   setAnswers: React.Dispatch<React.SetStateAction<WizardAnswers>>;
@@ -334,6 +334,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
   hotelStyles: HotelStyle[];
   travelProfiles: TravelProfile[];
   budgetRanges: BudgetRange[];
+  combos: Combo[];
 }) {
   const update = (key: string, val: unknown) => setAnswers(prev => ({ ...prev, [key]: val }));
 
@@ -606,7 +607,143 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     </div>
   );
 
-  if (stepId === 9) return (
+  if (stepId === 9) {
+    // ═══ COMBOS STEP ═══
+    // Calcular dias da viagem
+    const tripDays = (() => {
+      if (answers.datas_definidas && answers.data_ida && answers.data_volta) {
+        const [d1, m1, y1] = answers.data_ida.split('/');
+        const [d2, m2, y2] = answers.data_volta.split('/');
+        const start = new Date(Number(y1), Number(m1) - 1, Number(d1));
+        const end = new Date(Number(y2), Number(m2) - 1, Number(d2));
+        return Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+      }
+      return answers.dias_total || 0;
+    })();
+
+    // Verificar disponibilidade dos combos: dias suficientes + passeios encaixam nas datas
+    const checkComboAvailability = (combo: Combo) => {
+      if (tripDays < combo.dias_min) return { available: false, reason: `Requer no minimo ${combo.dias_min} dias (sua viagem tem ${tripDays})` };
+
+      // Se datas definidas, verificar se os passeios do combo cabem nos dias
+      if (answers.datas_definidas && answers.data_ida && answers.data_volta) {
+        const [d1, m1, y1] = answers.data_ida.split('/');
+        const start = new Date(Number(y1), Number(m1) - 1, Number(d1));
+        const dias = ['domingo', 'segunda-feira', 'terca-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sabado'];
+
+        for (const tourId of combo.tour_ids) {
+          const tour = tours.find(t => t.id === tourId);
+          if (!tour) continue;
+          const disp = ((tour as unknown as Record<string, string>).disponibilidade) || 'todos os dias';
+          if (disp.toLowerCase().includes('todos os dias')) continue;
+
+          // Verificar se pelo menos 1 dia da viagem (exceto chegada/partida) encaixa
+          let found = false;
+          for (let i = 1; i < tripDays - 1; i++) {
+            const date = new Date(start.getTime() + i * 86400000);
+            const dayName = dias[date.getDay()]
+              .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace('-feira', '');
+            const dispNorm = disp.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+            if (dispNorm.includes(dayName)) { found = true; break; }
+          }
+          if (!found) return { available: false, reason: `${tour.nome} nao encaixa nas datas (disponivel: ${disp})` };
+        }
+      }
+
+      return { available: true, reason: '' };
+    };
+
+    const eligibleCombos = combos.filter(c => checkComboAvailability(c).available);
+    const selectedCombo = answers.combo_id || '';
+
+    if (eligibleCombos.length === 0) {
+      return (
+        <div>
+          <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 12, padding: '16px 20px', fontSize: 14, color: '#92400E', lineHeight: 1.6 }}>
+            {combos.length === 0
+              ? 'Nenhum combo disponivel no momento.'
+              : tripDays < 3
+                ? `Combos requerem no minimo 3 dias de viagem. Sua viagem tem ${tripDays} dias.`
+                : 'Nenhum combo se encaixa nas datas da sua viagem. Os passeios dos combos disponiveis nao podem ser alocados nas datas selecionadas.'}
+          </div>
+          <p style={{ fontSize: 13, color: '#64748B', marginTop: 12 }}>Voce pode continuar e selecionar passeios individuais na etapa anterior.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>Encontramos combos especiais para a sua viagem! Selecione um para economizar:</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {eligibleCombos.map((combo: Combo) => {
+            const somaIndividual = combo.tour_ids.reduce((s: number, id: string) => s + (tours.find(t => t.id === id)?.valor_por_pessoa || 0), 0);
+            const desconto = somaIndividual > 0 ? Math.round((1 - combo.preco_combo / somaIndividual) * 100) : 0;
+            const sel = selectedCombo === combo.id;
+            return (
+              <div key={combo.id} onClick={() => {
+                if (sel) {
+                  update('combo_id', '');
+                  // Remover tours do combo dos passeios
+                  const cur = answers.passeios || [];
+                  update('passeios', cur.filter(id => !combo.tour_ids.includes(id)));
+                } else {
+                  update('combo_id', combo.id);
+                  // Adicionar tours do combo aos passeios (sem duplicar)
+                  const cur = answers.passeios || [];
+                  const merged = [...new Set([...cur, ...combo.tour_ids])];
+                  update('passeios', merged);
+                }
+              }}
+                style={{
+                  border: `2px solid ${sel ? '#1B6E3C' : '#E2E8F0'}`, borderRadius: 16,
+                  padding: 20, cursor: 'pointer', background: sel ? '#F0FDF4' : 'white', transition: 'all 0.2s',
+                }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: '#1E293B' }}>{combo.emoji} {combo.nome}</div>
+                  {sel && <div style={{ background: '#1B6E3C', color: 'white', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700 }}>✓</div>}
+                </div>
+                <div style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>{combo.description}</div>
+
+                <div style={{ fontSize: 13, color: '#475569', marginBottom: 8 }}>
+                  <strong>Passeios incluidos:</strong>
+                </div>
+                {combo.tour_ids.map((tid: string) => {
+                  const t = tours.find(tr => tr.id === tid);
+                  return t ? (
+                    <div key={tid} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13, color: '#475569' }}>
+                      <span>{t.emoji} {t.nome}</span>
+                      <span style={{ color: '#94A3B8', textDecoration: 'line-through' }}>R$ {t.valor_por_pessoa}/pessoa</span>
+                    </div>
+                  ) : null;
+                })}
+
+                <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                  <div style={{ flex: 1, background: '#F8FAFC', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>INDIVIDUAL</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#64748B', textDecoration: 'line-through' }}>R$ {somaIndividual}/pessoa</div>
+                  </div>
+                  <div style={{ flex: 1, background: '#D1FAE5', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 11, color: '#065F46', fontWeight: 600 }}>COMBO</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#065F46' }}>R$ {combo.preco_combo}/pessoa</div>
+                  </div>
+                  <div style={{ flex: 1, background: '#FEF3C7', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 11, color: '#92400E', fontWeight: 600 }}>ECONOMIA</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#92400E' }}>{desconto}%</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: 16, fontSize: 13, color: '#64748B' }}>
+          {selectedCombo ? 'Combo selecionado! Os passeios ja foram adicionados ao seu roteiro.' : 'Selecione um combo ou avance para continuar sem combo.'}
+        </div>
+      </div>
+    );
+  }
+
+  if (stepId === 10) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12 }}>
         {['Sim, tenho algo para comemorar!', 'Não, é uma viagem normal'].map(opt => (
@@ -625,7 +762,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     </div>
   );
 
-  if (stepId === 10) return (
+  if (stepId === 11) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <p style={{ fontSize: 13, color: '#64748B', marginBottom: 4 }}>Uma estimativa nos ajuda a montar a proposta ideal para você.</p>
       {budgetRanges.map(o => (
@@ -637,7 +774,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     </div>
   );
 
-  if (stepId === 11) return (
+  if (stepId === 12) return (
     <div>
       <label style={{ fontSize: 14, fontWeight: 600, color: '#334155', display: 'block', marginBottom: 8 }}>Algum detalhe importante sobre a sua viagem?</label>
       <textarea value={answers.extras || ''} onChange={e => update('extras', e.target.value)}
@@ -662,6 +799,7 @@ const STEP_CONFIG = [
   { title: 'Estilo de hospedagem', sub: 'Nível de conforto desejado' },
   { title: 'Preferência de hotel', sub: 'Já definido ou quer sugestões?' },
   { title: 'Passeios e Experiências', sub: 'O que você quer fazer no Uruguai?' },
+  { title: 'Combos com Desconto', sub: 'Pacotes especiais para sua viagem' },
   { title: 'Vai comemorar uma data especial?', sub: 'Informe qual é a ocasião e a data' },
   { title: 'Orçamento', sub: 'Faixa de investimento' },
   { title: 'Informações adicionais', sub: 'Algum detalhe importante?' },
@@ -688,6 +826,7 @@ export default function WizardPage() {
   const [hotelStyles, setHotelStyles] = useState<HotelStyle[]>([]);
   const [travelProfiles, setTravelProfiles] = useState<TravelProfile[]>([]);
   const [budgetRanges, setBudgetRanges] = useState<BudgetRange[]>([]);
+  const [combos, setCombos] = useState<Combo[]>([]);
 
   // Chat state
   const [chatOpen, setChatOpen] = useState(false);
@@ -700,19 +839,20 @@ export default function WizardPage() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
-  const totalSteps = 11;
+  const totalSteps = 12;
 
   // Load catalog data and existing answers
   useEffect(() => {
     const loadData = async () => {
       setLoadingData(true);
       try {
-        const [citiesRes, toursRes, hotelRes, profilesRes, budgetRes] = await Promise.all([
+        const [citiesRes, toursRes, hotelRes, profilesRes, budgetRes, combosRes] = await Promise.all([
           supabase.from('cities').select('*').order('sort_order'),
           supabase.from('tours').select('*').order('sort_order'),
           supabase.from('hotel_styles').select('*').order('sort_order'),
           supabase.from('travel_profiles').select('*').order('sort_order'),
           supabase.from('budget_ranges').select('*').order('sort_order'),
+          supabase.from('combos').select('*').eq('ativo', true).order('sort_order'),
         ]);
 
         if (citiesRes.data) setCities(citiesRes.data);
@@ -720,6 +860,7 @@ export default function WizardPage() {
         if (hotelRes.data) setHotelStyles(hotelRes.data);
         if (profilesRes.data) setTravelProfiles(profilesRes.data);
         if (budgetRes.data) setBudgetRanges(budgetRes.data);
+        if (combosRes.data) setCombos(combosRes.data);
 
         // Load user profile to pre-fill name/whatsapp/email
         let profileNome = '';
@@ -1006,6 +1147,7 @@ export default function WizardPage() {
           hotelStyles={hotelStyles}
           travelProfiles={travelProfiles}
           budgetRanges={budgetRanges}
+          combos={combos}
         />
       </div>
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white', borderTop: '1px solid #E2E8F0', padding: '16px 24px', display: 'flex', gap: 12, zIndex: 50 }}>
