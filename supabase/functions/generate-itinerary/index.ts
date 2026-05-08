@@ -887,7 +887,38 @@ REGRAS DE FORMATACAO:
     const aiData = await aiRes.json()
     const resultText = aiData.choices?.[0]?.message?.content || "Nao foi possivel gerar o roteiro. Entre em contato com nossa equipe."
 
-    // --- Save result to DB ---
+    // --- Save result to DB + sync reordered cities/tours to answers ---
+    // Atualizar answers.cidades com a ordem correta para que o Timeline do frontend reflita o roteiro
+    const cidadesReordenadas: Record<string, number> = {}
+    for (let ci = 0; ci < citySchedule.length; ci++) {
+      const cid = citySchedule[ci]
+      if (!cidadesReordenadas[cid]) cidadesReordenadas[cid] = 0
+    }
+    // Contar noites a partir do citySchedule (ignorar arrival day do primeiro)
+    const cidadesContadas: Record<string, number> = {}
+    const firstCityId = citySchedule[0]
+    let counting = false
+    for (let ci = 0; ci < citySchedule.length; ci++) {
+      const cid = citySchedule[ci]
+      if (ci === 0) { counting = true; continue } // skip arrival day
+      if (!cidadesContadas[cid]) cidadesContadas[cid] = 0
+      cidadesContadas[cid]++
+    }
+    // Manter ordem do citySchedule
+    const cidadesOrdenadas: Record<string, number> = {}
+    const seen = new Set<string>()
+    for (const cid of citySchedule) {
+      if (!seen.has(cid)) {
+        cidadesOrdenadas[cid] = cidadesContadas[cid] || cidadesObj[cid] || 1
+        seen.add(cid)
+      }
+    }
+
+    await supabase
+      .from("itinerary_answers")
+      .update({ cidades: cidadesOrdenadas, passeios: passeiosIds })
+      .eq("itinerary_id", itinerary_id)
+
     const { error: updateError } = await supabase
       .from("itineraries")
       .update({
