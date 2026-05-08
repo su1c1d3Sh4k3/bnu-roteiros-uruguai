@@ -815,8 +815,8 @@ serve(async (req) => {
       const custo = ta.preco * total
       totalPasseios += custo
       const nota = (ta.id === transportTourId) ? " (inclui deslocamento entre cidades)" : ""
-      budget.push(`- ${ta.nome}: R$${ta.preco}/pessoa x ${total} = R$${custo}${nota}`)
-      if (ta.link && ta.link !== "N/A") budget.push(`  ${ta.link}`)
+      const linkStr = (ta.link && ta.link !== "N/A") ? ` ${ta.link}` : ""
+      budget.push(`- ${ta.nome}: R$${ta.preco}/pessoa x ${total} = R$${custo}${nota}${linkStr}`)
     }
     if (allocatedTours.length === 0) budget.push("- Nenhum passeio incluido")
 
