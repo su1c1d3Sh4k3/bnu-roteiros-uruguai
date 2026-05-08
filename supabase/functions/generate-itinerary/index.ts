@@ -813,6 +813,10 @@ ${tourAllocations.filter(ta => !unallocated.includes(ta.nome)).map(ta => `- ${ta
 TRANSFERS NECESSARIOS (valores por grupo):
 ${transfersStr}
 
+IMPORTANTE SOBRE TRANSFERS:
+- Se o Pre-Roteiro mostra um City Tour como "deslocamento" entre cidades (ex: City Tour Punta del Este — deslocamento para Punta del Este), esse passeio JA INCLUI o transporte. NAO adicione um transfer privativo separado para esse trecho. O custo do deslocamento ja esta no valor do passeio.
+- So inclua transfers que aparecem explicitamente no Pre-Roteiro com "🚗 Transfer" ou "🚗 Van compartilhada".
+
 HOSPEDAGEM (valores APROXIMADOS por pessoa/noite):
 Configuracao de quartos: ${quartosResumoStr} (${total} pessoas)
 ${hotelPricingStr}
