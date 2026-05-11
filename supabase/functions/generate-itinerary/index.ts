@@ -464,6 +464,22 @@ serve(async (req) => {
       }
     }
 
+    // Recalcular cidadesObj a partir do citySchedule real (após ajustes de fallback)
+    // Cada dia exceto o último (departure) = 1 noite na cidade daquele dia
+    if (citySchedule.length > 1) {
+      const realNights: Record<string, number> = {}
+      for (let i = 0; i < citySchedule.length - 1; i++) {
+        const c = citySchedule[i]
+        realNights[c] = (realNights[c] || 0) + 1
+      }
+      // Atualizar cidadesObj mantendo a ordem
+      for (const cityId of Object.keys(cidadesObj)) {
+        if (realNights[cityId] !== undefined) {
+          cidadesObj[cityId] = realNights[cityId]
+        }
+      }
+    }
+
     // Sort by fewest options first (constraint propagation)
     tourAllocations.sort((a, b) => a.diasPossiveis.length - b.diasPossiveis.length)
 
