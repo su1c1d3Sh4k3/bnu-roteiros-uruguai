@@ -154,13 +154,14 @@ serve(async (req) => {
     }
 
     // --- Fetch catalogs ---
-    const [toursRes, citiesRes, profilesRes, transfersRes, hotelPricesRes, combosRes] = await Promise.all([
+    const [toursRes, citiesRes, profilesRes, transfersRes, hotelPricesRes, combosRes, seasonalRes] = await Promise.all([
       supabase.from("tours").select("*").eq("ativo", true).order("sort_order"),
       supabase.from("cities").select("*").order("sort_order"),
       supabase.from("travel_profiles").select("*").order("sort_order"),
       supabase.from("transfers").select("*").eq("ativo", true).order("sort_order"),
       supabase.from("hotel_prices").select("*"),
       supabase.from("combos").select("*").eq("ativo", true),
+      supabase.from("seasonal_rules").select("*").eq("ativo", true),
     ])
 
     const tours = toursRes.data || []
@@ -169,6 +170,7 @@ serve(async (req) => {
     const profiles = profilesRes.data || []
     const transfers = transfersRes.data || []
     const hotelPrices = hotelPricesRes.data || []
+    const seasonalRules = seasonalRes.data || []
 
     // --- Build data maps ---
     const total = (answers.adultos || 1) + (answers.criancas || 0)
@@ -598,6 +600,28 @@ serve(async (req) => {
       priceMap[h.city_id][h.hotel_style_id][h.room_type] = { price: Number(h.price_per_night), note: h.season_note || "" }
     }
 
+    // Sazonalidade: determinar meses da viagem e calcular multiplicador por cidade
+    const tripMonths = new Set<number>()
+    if (tripStart && tripEnd) {
+      const cur = new Date(tripStart.getTime())
+      while (cur <= tripEnd) {
+        tripMonths.add(cur.getMonth() + 1) // 1-12
+        cur.setDate(cur.getDate() + 1)
+      }
+    }
+
+    // Para cada cidade, encontrar o maior percentual sazonal aplicavel
+    const getSeasonMultiplier = (cityId: string): number => {
+      let maxPct = 0
+      for (const rule of seasonalRules) {
+        if (rule.city_id !== cityId) continue
+        if (rule.months.some((m: number) => tripMonths.has(m))) {
+          if (rule.percentage > maxPct) maxPct = rule.percentage
+        }
+      }
+      return maxPct > 0 ? 1 + maxPct / 100 : 1
+    }
+
     // Build detailed hotel pricing string for the selected room types
     const hotelPricingLines: string[] = []
     const hotelEstrelas = answers.hotel_estrelas || "4"
@@ -617,6 +641,7 @@ serve(async (req) => {
       if (!cityPrices || !cityPrices[hotelEstrelas]) continue
 
       const noites = Number(cidadesObj[cityId]) || 0
+      const mult = getSeasonMultiplier(cityId)
       const lineParts: string[] = []
 
       for (const [roomType, qtd] of [["individual", qtdIndividual], ["duplo", qtdDuplo], ["triplo", qtdTriplo]] as [string, number][]) {
@@ -626,14 +651,14 @@ serve(async (req) => {
           lineParts.push(`${roomTypeLabels[roomType]}: NAO DISPONIVEL`)
           continue
         }
-        const custoPorNoite = priceData.price * qtd
+        const adjustedPrice = Math.round(priceData.price * mult)
+        const custoPorNoite = adjustedPrice * qtd
         const custoTotal = custoPorNoite * noites
         const pessoasNoQuarto = roomType === "individual" ? 1 : roomType === "duplo" ? 2 : 3
-        lineParts.push(`${qtd}x ${roomTypeLabels[roomType]} (${pessoasNoQuarto}p): R$${priceData.price}/pessoa/noite x ${qtd} quartos x ${noites} noites = R$${custoTotal}`)
+        lineParts.push(`${qtd}x ${roomTypeLabels[roomType]} (${pessoasNoQuarto}p): R$${adjustedPrice}/pessoa/noite x ${qtd} quartos x ${noites} noites = R$${custoTotal}`)
       }
 
-      const seasonNote = cityPrices[hotelEstrelas]?.["duplo"]?.note || ""
-      hotelPricingLines.push(`- ${cityName} ${hotelEstrelas}★ (${noites} noites): ${lineParts.join(" | ")}${seasonNote ? ` [${seasonNote}]` : ""}`)
+      hotelPricingLines.push(`- ${cityName} ${hotelEstrelas}\u2605 (${noites} noites): ${lineParts.join(" | ")}`)
     }
     const hotelPricingStr = hotelPricingLines.join("\n")
 
@@ -942,19 +967,20 @@ serve(async (req) => {
       const noites = Number(cidadesObj[cityId]) || 0
       const cp = priceMap[cityId]
       if (!cp || !cp[hotelEstrelas]) continue
+      const mult = getSeasonMultiplier(cityId)
       let cityCost = 0
       const parts: string[] = []
       for (const [rt, qtd] of [["individual", qtdIndividual], ["duplo", qtdDuplo], ["triplo", qtdTriplo]] as [string, number][]) {
         if (qtd <= 0) continue
         const pd = cp[hotelEstrelas]?.[rt]
         if (!pd) { parts.push(`${roomTypeLabels[rt]}: N/A`); continue }
-        const cost = pd.price * qtd * noites
+        const adjustedPrice = Math.round(pd.price * mult)
+        const cost = adjustedPrice * qtd * noites
         cityCost += cost
-        parts.push(`${qtd}x ${roomTypeLabels[rt]} R$${pd.price}/noite x ${noites}n = R$${cost}`)
+        parts.push(`${qtd}x ${roomTypeLabels[rt]} R$${adjustedPrice}/noite x ${noites}n = R$${cost}`)
       }
       totalHospedagem += cityCost
-      const sn = cp[hotelEstrelas]?.["duplo"]?.note || ""
-      budget.push(`- ${cName} ${hotelEstrelas}\u2605 (${noites} noites): ${parts.join(" + ")}${sn ? ` [${sn}]` : ""}`)
+      budget.push(`- ${cName} ${hotelEstrelas}\u2605 (${noites} noites): ${parts.join(" + ")}`)
     }
 
     // Totais

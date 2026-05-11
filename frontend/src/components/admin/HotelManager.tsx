@@ -199,7 +199,7 @@ export default function HotelManager() {
       })}
 
       <div style={{ padding: 16, background: '#FFFBEB', borderRadius: 10, border: '1px solid #FDE68A', fontSize: 13, color: '#92400E' }}>
-        <strong>Sazonalidade:</strong> Em julho e feriados, +20% em Montevideo e Colonia. Em dez/jan, +20% em Montevideo e Colonia, +40% em Punta del Este.
+        <strong>Sazonalidade:</strong> Os aumentos sazonais sao configurados na aba "Sazonalidade" e aplicados automaticamente no calculo do orcamento.
       </div>
     </div>
   );

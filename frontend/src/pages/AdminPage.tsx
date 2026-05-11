@@ -8,9 +8,10 @@ import TransferManager from '../components/admin/TransferManager';
 import ComboManager from '../components/admin/ComboManager';
 import AIPromptEditor from '../components/admin/AIPromptEditor';
 import AIDocumentManager from '../components/admin/AIDocumentManager';
+import SeasonalityManager from '../components/admin/SeasonalityManager';
 import EmailTest from '../components/admin/EmailTest';
 
-type Tab = 'tours' | 'cities' | 'hotels' | 'transfers' | 'combos' | 'ai-prompt' | 'ai-itinerary' | 'ai-docs' | 'email';
+type Tab = 'tours' | 'cities' | 'hotels' | 'transfers' | 'combos' | 'seasonality' | 'ai-prompt' | 'ai-itinerary' | 'ai-docs' | 'email';
 
 interface NavItem {
   id: Tab;
@@ -25,6 +26,7 @@ const NAV: NavItem[] = [
   { id: 'hotels',   label: 'Hotéis',      icon: '🏨',  section: 'Produtos' },
   { id: 'transfers',label: 'Transfers',   icon: '🚗',  section: 'Produtos' },
   { id: 'combos',   label: 'Combos',      icon: '🎁',  section: 'Produtos' },
+  { id: 'seasonality', label: 'Sazonalidade', icon: '📅', section: 'Produtos' },
   { id: 'ai-prompt',label: 'Prompt Rodrigo', icon: '🤖', section: 'Inteligência Artificial' },
   { id: 'ai-itinerary', label: 'Prompt Roteiro', icon: '📋', section: 'Inteligência Artificial' },
   { id: 'ai-docs',  label: 'Documentos',  icon: '📄',  section: 'Inteligência Artificial' },
@@ -48,6 +50,7 @@ export default function AdminPage() {
       case 'hotels':    return <HotelManager />;
       case 'transfers': return <TransferManager />;
       case 'combos':    return <ComboManager />;
+      case 'seasonality': return <SeasonalityManager />;
       case 'ai-prompt': return <AIPromptEditor />;
       case 'ai-itinerary': return <AIPromptEditor
         configId={2}
