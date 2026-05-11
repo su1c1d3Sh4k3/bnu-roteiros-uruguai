@@ -706,14 +706,15 @@ serve(async (req) => {
 
         preRoteiro.push(`### Dia ${i + 1} - ${dateStr} (${diaSemana}) - ${cityName}`)
 
-        // PONTO 1: Van compartilhada para 1 pessoa, transfer privativo para 2+
-        const transferLabel = total === 1 ? "Van compartilhada" : "Transfer"
+        // PONTO 1: Van compartilhada só para 1 pessoa no trecho Aeroporto MVD ↔ Hotel MVD
+        const isAirportMvdTransfer = (isArrival && !(hasThreeCities && cityOnDay === "pde")) || (isDeparture && !((hasThreeCities && cityOnDay === "col") || (hasMvdPde && cityOnDay === "pde")))
+        const transferLabel = (total === 1 && isAirportMvdTransfer) ? "Van compartilhada" : "Transfer"
 
         if (isArrival) {
           // Arrival: handle non-MVD first city (3-city scenario starts in PDE)
           if (hasThreeCities && cityOnDay === "pde") {
             preRoteiro.push(`- \u2708\uFE0F Chegada no Aeroporto de Montevideo`)
-            preRoteiro.push(`- \uD83D\uDE97 ${transferLabel} Aeroporto de Montevideo \u2192 hotel em ${cityName}`)
+            preRoteiro.push(`- \uD83D\uDE97 Transfer Aeroporto de Montevideo \u2192 hotel em ${cityName}`)
           } else {
             preRoteiro.push(`- \u2708\uFE0F Chegada em ${cityName}`)
             preRoteiro.push(`- \uD83D\uDE97 ${transferLabel} aeroporto \u2192 hotel`)
@@ -732,7 +733,7 @@ serve(async (req) => {
           // Departure: handle non-MVD last city
           preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel${cityOnDay !== "mvd" ? " em " + cityName : ""}`)
           if ((hasThreeCities && cityOnDay === "col") || (hasMvdPde && cityOnDay === "pde")) {
-            preRoteiro.push(`- \uD83D\uDE97 ${transferLabel} ${cityName} \u2192 Aeroporto de Montevideo`)
+            preRoteiro.push(`- \uD83D\uDE97 Transfer ${cityName} \u2192 Aeroporto de Montevideo`)
           } else {
             preRoteiro.push(`- \uD83D\uDE97 ${transferLabel} hotel \u2192 aeroporto`)
           }
@@ -883,7 +884,7 @@ serve(async (req) => {
 
     // Chegada
     const arrivalCity = citySchedule[0]
-    if (total === 1 && transfersMap["Aeroporto_solo"]) {
+    if (total === 1 && arrivalCity === "mvd" && transfersMap["Aeroporto_solo"]) {
       const p = getTransferPrice(transfersMap["Aeroporto_solo"])
       totalTransfers += p
       budget.push(`- Van compartilhada aeroporto \u2192 hotel: R$${p}`)
@@ -917,7 +918,7 @@ serve(async (req) => {
 
     // Partida
     const departCity = citySchedule[citySchedule.length - 1]
-    if (total === 1 && transfersMap["Aeroporto_solo"]) {
+    if (total === 1 && departCity === "mvd" && transfersMap["Aeroporto_solo"]) {
       const p = getTransferPrice(transfersMap["Aeroporto_solo"])
       totalTransfers += p
       budget.push(`- Van compartilhada hotel \u2192 aeroporto: R$${p}`)
