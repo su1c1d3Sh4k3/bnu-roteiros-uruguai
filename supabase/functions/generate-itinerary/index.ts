@@ -528,6 +528,39 @@ serve(async (req) => {
       }
     }
 
+    // Pós-validação defensiva: "Dia Todo" nunca combina com outro passeio no mesmo dia
+    for (const [dayIdx, names] of dayAssignments.entries()) {
+      if (names.length <= 1) continue
+      const dayTours = names.map(n => tourAllocations.find(ta => ta.nome === n))
+      const hasDiaTodo = dayTours.some(t => t?.tipo === "Dia Todo")
+      if (hasDiaTodo) {
+        // Manter apenas o tour "Dia Todo", desalocar os outros
+        const diaTodoName = dayTours.find(t => t?.tipo === "Dia Todo")!.nome
+        const removed = names.filter(n => n !== diaTodoName)
+        dayAssignments.set(dayIdx, [diaTodoName])
+        for (const r of removed) unallocated.push(r)
+      }
+    }
+
+    // Pós-validação defensiva: verificar disponibilidade (dia da semana) de cada tour alocado
+    if (tripStart) {
+      for (const [dayIdx, names] of dayAssignments.entries()) {
+        const d = new Date(tripStart.getTime() + dayIdx * 86400000)
+        const diaSemana = getDiaSemana(d)
+        const invalid = names.filter(name => {
+          const ta = tourAllocations.find(t => t.nome === name)
+          if (!ta) return false
+          const t = toursMap[ta.id]
+          if (!t) return false
+          return !isDayAvailable(diaSemana, t.disponibilidade || "todos os dias")
+        })
+        if (invalid.length > 0) {
+          dayAssignments.set(dayIdx, names.filter(n => !invalid.includes(n)))
+          for (const r of invalid) unallocated.push(r)
+        }
+      }
+    }
+
     // Build the suggested schedule text
     let suggestedScheduleStr = ""
     if (tripStart) {
