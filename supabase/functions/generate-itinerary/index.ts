@@ -310,12 +310,7 @@ serve(async (req) => {
       const cidadesOrdem = Object.entries(cidadesObj)
       let dayIdx = 0
       for (const [cityId, nights] of cidadesOrdem) {
-        // First city: includes arrival day
-        if (dayIdx === 0) {
-          citySchedule.push(cityId) // arrival day
-          dayIdx++
-        }
-        // Fill the nights (each night = waking up in that city)
+        // Each city gets exactly N entries (N nights selected)
         for (let n = 0; n < (nights as number); n++) {
           if (dayIdx < totalDays) {
             citySchedule.push(cityId)
@@ -323,7 +318,7 @@ serve(async (req) => {
           }
         }
       }
-      // Fill remaining days
+      // Fill remaining day (departure day goes to last city)
       while (citySchedule.length < totalDays) {
         citySchedule.push(cidadesOrdem[cidadesOrdem.length - 1]?.[0] || "mvd")
       }
