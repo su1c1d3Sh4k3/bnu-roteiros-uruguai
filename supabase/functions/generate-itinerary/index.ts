@@ -1118,10 +1118,13 @@ INSTRUCOES:
 3. Exemplos de adaptacoes: trocar tipo de transfer (compartilhado por privativo), adicionar/remover passeios, ajustar horarios, incluir pedidos especiais, etc.
 4. Retorne o roteiro COMPLETO atualizado (Pre-Roteiro dia a dia + Pre-Orcamento Estimado).
 5. Mantenha EXATAMENTE o mesmo formato markdown do roteiro original (## para secoes, ### para dias, - para bullets com emojis).
-6. Recalcule o orcamento se houver mudanca em passeios, transfers ou hospedagem.
+6. Recalcule o orcamento se houver mudanca em passeios, transfers ou hospedagem. O total DEVE refletir as mudancas.
 7. NAO adicione explicacoes ou comentarios fora do roteiro. Retorne SOMENTE o roteiro completo.
 8. Se as observacoes do cliente nao exigem mudanca alguma, retorne o roteiro original sem alteracoes.
-9. IMPORTANTE: Use os precos EXATOS do catalogo de tours e transfers fornecido acima. Nao invente precos.`
+9. IMPORTANTE: Use os precos EXATOS do catalogo de tours e transfers fornecido acima. Nao invente precos.
+10. TRANSFER PRIVATIVO: quando o cliente pedir transfer privativo para um passeio (ex: "transfer privativo para o City Tour"), use o preco do transfer privativo da cidade correspondente (ex: "Aeroporto de Montevideo" para passeios em Montevideo = R$${getTransferPrice(transfersMap["aeroporto_mvd"] || transfers[0])}/trecho para ${total} pax). INCLUA o valor no orcamento e no total — nao deixe como "sob consulta".
+11. NUNCA remova passeios, transfers ou itens do roteiro original a menos que o cliente peca explicitamente.
+12. Se o cliente pedir algo que voce nao consegue precificar com o catalogo, inclua no roteiro com a nota "(valor sob consulta)" mas NUNCA omita do roteiro.`
 
           const res = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
