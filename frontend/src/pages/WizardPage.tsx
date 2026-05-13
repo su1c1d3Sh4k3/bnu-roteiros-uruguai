@@ -556,22 +556,6 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
   );
 
   if (stepId === 7) return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', gap: 12 }}>
-        {['Já tenho hotel em mente', 'Quero sugestões de hotéis'].map(opt => (
-          <button key={opt} onClick={() => update('hotel_opcao', opt)}
-            style={{ flex: 1, padding: '14px 12px', borderRadius: 12, border: `2px solid ${answers.hotel_opcao === opt ? '#0D3B8C' : '#E2E8F0'}`, background: answers.hotel_opcao === opt ? '#EFF6FF' : 'white', cursor: 'pointer', fontWeight: 600, fontSize: 13, lineHeight: 1.4 }}>
-            {opt === 'Já tenho hotel em mente' ? 'Já tenho hotel em mente' : 'Quero sugestões de hotéis'}
-          </button>
-        ))}
-      </div>
-      {answers.hotel_opcao === 'Já tenho hotel em mente' && (
-        <Input label="Qual hotel(is)?" value={answers.hotel_nome || ''} onChange={v => update('hotel_nome', v)} placeholder="Ex: Cottage Hotel, Sofitel..." />
-      )}
-    </div>
-  );
-
-  if (stepId === 8) return (
     <div>
       <p style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>Selecione os passeios de interesse (pode marcar varios):</p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -607,7 +591,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     </div>
   );
 
-  if (stepId === 9) {
+  if (stepId === 8) {
     // ═══ COMBOS STEP ═══
     // Calcular dias da viagem
     const tripDays = (() => {
@@ -743,7 +727,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     );
   }
 
-  if (stepId === 10) return (
+  if (stepId === 9) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 12 }}>
         {['Sim, tenho algo para comemorar!', 'Não, é uma viagem normal'].map(opt => (
@@ -762,7 +746,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     </div>
   );
 
-  if (stepId === 11) return (
+  if (stepId === 10) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <p style={{ fontSize: 13, color: '#64748B', marginBottom: 4 }}>Uma estimativa nos ajuda a montar a proposta ideal para você.</p>
       {budgetRanges.map(o => (
@@ -774,7 +758,7 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     </div>
   );
 
-  if (stepId === 12) return (
+  if (stepId === 11) return (
     <div>
       <label style={{ fontSize: 14, fontWeight: 600, color: '#334155', display: 'block', marginBottom: 8 }}>Algum detalhe importante sobre a sua viagem?</label>
       <textarea value={answers.extras || ''} onChange={e => update('extras', e.target.value)}
@@ -797,8 +781,7 @@ const STEP_CONFIG = [
   { title: 'Quando viaja?', sub: 'Datas ou duração planejada' },
   { title: 'Cidades do roteiro', sub: 'Quais cidades incluir?' },
   { title: 'Estilo de hospedagem', sub: 'Nível de conforto desejado' },
-  { title: 'Preferência de hotel', sub: 'Já definido ou quer sugestões?' },
-  { title: 'Passeios e Experiências', sub: 'O que você quer fazer no Uruguai?' },
+{ title: 'Passeios e Experiências', sub: 'O que você quer fazer no Uruguai?' },
   { title: 'Combos com Desconto', sub: 'Pacotes especiais para sua viagem' },
   { title: 'Vai comemorar uma data especial?', sub: 'Informe qual é a ocasião e a data' },
   { title: 'Orçamento', sub: 'Faixa de investimento' },
@@ -839,7 +822,7 @@ export default function WizardPage() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
-  const totalSteps = 12;
+  const totalSteps = 11;
 
   // Load catalog data and existing answers
   useEffect(() => {
@@ -1071,7 +1054,6 @@ export default function WizardPage() {
     if (step === 3) return answers.datas_definidas !== undefined;
     if (step === 4) return Object.keys(answers.cidades || {}).length > 0;
     if (step === 5) return !!answers.hotel_estrelas;
-    if (step === 6) return !!answers.hotel_opcao;
     return true;
   };
 
