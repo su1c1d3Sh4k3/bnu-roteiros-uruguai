@@ -1053,9 +1053,9 @@ serve(async (req) => {
     const matchOrc = orcamentoCliente.match(/R\$\s*([\d.]+)/g)
     if (matchOrc && matchOrc.length >= 2) {
       const maxOrc = Number(matchOrc[matchOrc.length - 1].replace(/R\$\s*/, "").replace(/\./g, ""))
-      if (maxOrc > 0 && totalGrupo > maxOrc) {
+      if (maxOrc > 0 && totalPorPessoa > maxOrc) {
         budget.push("")
-        budget.push(`\u26A0\uFE0F O total estimado (R$${totalGrupo}) esta acima do orcamento desejado (${orcamentoCliente}). Sugerimos ajustar categoria de hotel, numero de noites ou avaliar transfers alternativos.`)
+        budget.push(`\u26A0\uFE0F O valor estimado por pessoa (R$${totalPorPessoa}) esta acima do orcamento desejado (${orcamentoCliente}). Sugerimos ajustar categoria de hotel, numero de noites ou avaliar transfers alternativos.`)
       }
     }
 
