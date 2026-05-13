@@ -801,7 +801,8 @@ serve(async (req) => {
           for (const tourName of assigned) {
             const ta = tourAllocations.find(t => t.nome === tourName)
             if (ta) {
-              preRoteiro.push(`- \uD83C\uDFAB ${ta.nome} (${ta.saida} - ${ta.retorno}) ${ta.link}`)
+              const dispInfo = (!tripStart && ta.disponibilidade && ta.disponibilidade.toLowerCase() !== "todos os dias") ? ` (disponivel: ${ta.disponibilidade})` : ""
+              preRoteiro.push(`- \uD83C\uDFAB ${ta.nome} (${ta.saida} - ${ta.retorno})${dispInfo} ${ta.link}`)
             }
           }
           if (assigned.length === 0) {
@@ -845,7 +846,8 @@ serve(async (req) => {
               if (ta) {
                 const isTransport = isTransportTourDay && ta.id === transportTourId
                 const transportLabel = isTransport ? ` \u2014 deslocamento para ${transportDestCityName}` : ""
-                preRoteiro.push(`- \uD83C\uDFAB ${ta.nome} (${ta.saida} - ${ta.retorno})${transportLabel} ${ta.link}`)
+                const dispInfo = (!tripStart && ta.disponibilidade && ta.disponibilidade.toLowerCase() !== "todos os dias") ? ` (disponivel: ${ta.disponibilidade})` : ""
+                preRoteiro.push(`- \uD83C\uDFAB ${ta.nome} (${ta.saida} - ${ta.retorno})${transportLabel}${dispInfo} ${ta.link}`)
               }
             }
           } else if (!isFailedTransportDay) {
