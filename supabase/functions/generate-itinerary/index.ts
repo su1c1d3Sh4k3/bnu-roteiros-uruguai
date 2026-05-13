@@ -347,10 +347,8 @@ serve(async (req) => {
       if (!t) continue
 
       const diasPossiveis: number[] = []
-      if (tripStart && totalDays > 0) {
+      if (totalDays > 0) {
         for (let i = 0; i < totalDays; i++) {
-          const d = new Date(tripStart.getTime() + i * 86400000)
-          const diaSemana = getDiaSemana(d)
           const isArrival = i === 0
           const isDeparture = i === totalDays - 1
           const cityOnDay = citySchedule[i] || ""
@@ -359,7 +357,13 @@ serve(async (req) => {
           if (isDeparture) continue
           if (isArrival && tipo !== "Noturno") continue
           if (cityOnDay !== t.cidade_base) continue
-          if (!isDayAvailable(diaSemana, t.disponibilidade || "todos os dias")) continue
+
+          // Só filtrar por dia da semana se temos datas reais
+          if (tripStart) {
+            const d = new Date(tripStart.getTime() + i * 86400000)
+            const diaSemana = getDiaSemana(d)
+            if (!isDayAvailable(diaSemana, t.disponibilidade || "todos os dias")) continue
+          }
 
           // PONTO 5: Em dias de mudança de cidade (transfer), só permitir Noturno
           // (exceto se este tour É o tour de transporte designado)
@@ -740,14 +744,11 @@ serve(async (req) => {
     }
 
     // Generate each day
-    if (tripStart && totalDays > 0) {
+    if (totalDays > 0) {
       let currentCity = citySchedule[0]
       let prevWasTransportTour = false
 
       for (let i = 0; i < totalDays; i++) {
-        const d = new Date(tripStart.getTime() + i * 86400000)
-        const dateStr = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`
-        const diaSemana = getDiaSemana(d)
         const cityOnDay = citySchedule[i]
         const cityName = citiesMap[cityOnDay] || cityOnDay
         const assigned = dayAssignments.get(i) || []
@@ -773,7 +774,15 @@ serve(async (req) => {
         // Suppress city change if yesterday had transport (successful or fallback)
         const suppressCityChange = cityChanged && prevWasTransportTour
 
-        preRoteiro.push(`### Dia ${i + 1} - ${dateStr} (${diaSemana}) - ${cityName}`)
+        // Build day header with or without dates
+        if (tripStart) {
+          const d = new Date(tripStart.getTime() + i * 86400000)
+          const dateStr = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`
+          const diaSemana = getDiaSemana(d)
+          preRoteiro.push(`### Dia ${i + 1} - ${dateStr} (${diaSemana}) - ${cityName}`)
+        } else {
+          preRoteiro.push(`### Dia ${i + 1} - ${cityName}`)
+        }
 
         // PONTO 1: Van compartilhada só para 1 pessoa no trecho Aeroporto MVD ↔ Hotel MVD
         const isAirportMvdTransfer = (isArrival && !(hasThreeCities && cityOnDay === "pde")) || (isDeparture && !((hasThreeCities && cityOnDay === "col") || (hasMvdPde && cityOnDay === "pde")))
