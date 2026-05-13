@@ -527,9 +527,16 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
                   : <NumberInput label="Quantas noites?" value={Number(cidades[c.id]) || 2}
                       onChange={v => {
                         const maxAllowed = totalTripNights !== null ? totalTripNights - (usedNights - (Number(cidades[c.id]) || 0)) : 99;
-                        update('cidades', { ...cidades, [c.id]: Math.min(v, Math.max(1, maxAllowed)) });
+                        const clamped = Math.min(v, Math.max(0, maxAllowed));
+                        if (clamped <= 0) {
+                          const novo = { ...cidades };
+                          delete novo[c.id];
+                          update('cidades', novo);
+                        } else {
+                          update('cidades', { ...cidades, [c.id]: clamped });
+                        }
                       }}
-                      min={1} max={totalTripNights || 99} />
+                      min={0} max={totalTripNights || 99} />
                 }
               </div>
             )}
@@ -1052,7 +1059,11 @@ export default function WizardPage() {
     if (step === 1) return !!answers.perfil;
     if (step === 2) return (answers.adultos || 0) >= 1 && !!(answers.hotel_quartos && Object.keys(answers.hotel_quartos).length > 0 && ((answers.hotel_quartos as Record<string, number>).individual > 0 || (answers.hotel_quartos as Record<string, number>).duplo > 0 || (answers.hotel_quartos as Record<string, number>).triplo > 0));
     if (step === 3) return answers.datas_definidas !== undefined;
-    if (step === 4) return Object.keys(answers.cidades || {}).length > 0;
+    if (step === 4) {
+      const cidadesObj = (answers.cidades || {}) as Record<string, number>;
+      const totalNoites = Object.values(cidadesObj).reduce((s, v) => s + (Number(v) || 0), 0);
+      return Object.keys(cidadesObj).length > 0 && totalNoites >= 2;
+    }
     if (step === 5) return !!answers.hotel_estrelas;
     return true;
   };
