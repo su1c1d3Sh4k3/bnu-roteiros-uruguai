@@ -11,15 +11,24 @@ const FAVICON_SRC = faviconSrc;
 // HELPERS
 // ═══════════════════════════════════════════════════════
 
+function linkify(text: string): string {
+  return text.replace(
+    /(https?:\/\/[^\s<>"')\]]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#0D3B8C;text-decoration:underline;word-break:break-all;">$1</a>'
+  );
+}
+
 function boldify(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>');
+  return linkify(
+    text
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+  );
 }
 
 function MarkdownText({ text, noBold }: { text: string; noBold?: boolean }) {
   if (!text) return null;
-  const process = (t: string) => noBold ? t.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1') : boldify(t);
+  const process = (t: string) => noBold ? linkify(t.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1')) : boldify(t);
   const lines = text.split('\n');
   return (
     <div style={{ lineHeight: 1.75 }}>
