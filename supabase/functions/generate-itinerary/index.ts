@@ -1060,11 +1060,106 @@ serve(async (req) => {
     }
 
     const budgetText = budget.join("\n")
-    const resultText = `## Pre-Roteiro\n\n${preRoteiroText}\n---\n\n${budgetText}`
+    let resultText = `## Pre-Roteiro\n\n${preRoteiroText}\n---\n\n${budgetText}`
 
     // DEBUG
     console.log("[GENERATE] Suggested schedule:\n" + suggestedScheduleStr)
     if (unallocated.length > 0) console.log("[GENERATE] Unallocated:", unallocated.join(", "))
+
+    // ═══════ REFINAMENTO POR IA COM BASE EM "INFORMAÇÕES ADICIONAIS" ═══════
+    const extrasText = (answers.extras || "").trim()
+    if (extrasText) {
+      console.log("[GENERATE] Extras detected, calling AI to refine itinerary:", extrasText.substring(0, 100))
+
+      const openaiKey = Deno.env.get("OPENAI_API_KEY")
+      if (openaiKey) {
+        try {
+          const [itineraryRules] = await Promise.all([getItineraryRules(supabase)])
+
+          // Catálogo de tours e transfers disponíveis para contexto
+          const catalogoTours = tours.map(t =>
+            `- ${t.nome} (ID: ${t.id}) | Tipo: ${t.tipo_passeio || "Diurno"} | R$${t.valor_por_pessoa}/pessoa | Cidade: ${citiesMap[t.cidade_base] || t.cidade_base} | Horário: ${t.horario_saida || "N/A"} - ${t.horario_retorno || "N/A"} | Disponibilidade: ${t.disponibilidade || "todos os dias"} | Link: ${t.link_url || "N/A"}`
+          ).join("\n")
+
+          const catalogoTransfers = transfers.map(t => {
+            const prices: string[] = []
+            if (t.price_1_2 > 0) prices.push(`1-2 pax: R$${t.price_1_2}`)
+            if (t.price_3_6 > 0) prices.push(`3-6 pax: R$${t.price_3_6}`)
+            if (t.price_7_11 > 0) prices.push(`7-11 pax: R$${t.price_7_11}`)
+            if (t.price_12_15 > 0) prices.push(`12-15 pax: R$${t.price_12_15}`)
+            return `- ${t.nome} (ID: ${t.id}): ${prices.join(" | ")}`
+          }).join("\n")
+
+          const refinePrompt = `Voce e o Rodrigo, consultor da Brasileiros no Uruguai. O sistema gerou um roteiro automatico para o cliente, mas o cliente deixou observacoes no campo "Informacoes Adicionais". Sua tarefa e analisar o roteiro e as observacoes do cliente e fazer os ajustes necessarios.
+
+${itineraryRules}
+
+DADOS DA VIAGEM:
+- Pessoas: ${total} (${answers.adultos || 1} adultos, ${answers.criancas || 0} criancas)
+- Cidades: ${cidadesStr}
+- Hotel: ${hotelStr}
+- Quartos: ${quartosResumoStr}
+
+CATALOGO DE PASSEIOS DISPONIVEIS:
+${catalogoTours}
+
+CATALOGO DE TRANSFERS DISPONIVEIS:
+${catalogoTransfers}
+
+ROTEIRO GERADO PELO SISTEMA:
+${resultText}
+
+INFORMACOES ADICIONAIS DO CLIENTE:
+"${extrasText}"
+
+INSTRUCOES:
+1. Analise cuidadosamente o que o cliente escreveu em "Informacoes Adicionais".
+2. Compare com o roteiro gerado e identifique o que precisa ser adaptado.
+3. Exemplos de adaptacoes: trocar tipo de transfer (compartilhado por privativo), adicionar/remover passeios, ajustar horarios, incluir pedidos especiais, etc.
+4. Retorne o roteiro COMPLETO atualizado (Pre-Roteiro dia a dia + Pre-Orcamento Estimado).
+5. Mantenha EXATAMENTE o mesmo formato markdown do roteiro original (## para secoes, ### para dias, - para bullets com emojis).
+6. Recalcule o orcamento se houver mudanca em passeios, transfers ou hospedagem.
+7. NAO adicione explicacoes ou comentarios fora do roteiro. Retorne SOMENTE o roteiro completo.
+8. Se as observacoes do cliente nao exigem mudanca alguma, retorne o roteiro original sem alteracoes.
+9. IMPORTANTE: Use os precos EXATOS do catalogo de tours e transfers fornecido acima. Nao invente precos.`
+
+          const res = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${openaiKey}`,
+            },
+            body: JSON.stringify({
+              model: "gpt-4.1",
+              max_tokens: 4000,
+              messages: [
+                { role: "system", content: refinePrompt },
+                { role: "user", content: `Por favor, analise as informacoes adicionais do cliente e ajuste o roteiro conforme necessario.` },
+              ],
+            }),
+          })
+
+          if (res.ok) {
+            const data = await res.json()
+            const refined = data?.choices?.[0]?.message?.content || ""
+            // Validar: deve conter estrutura de roteiro
+            if (refined && (refined.includes("## Pre-Roteiro") || refined.includes("## Pré-Roteiro") || refined.includes("### Dia"))) {
+              console.log("[GENERATE] AI refinement applied successfully, length:", refined.length)
+              resultText = refined
+            } else {
+              console.log("[GENERATE] AI refinement did not pass validation, keeping original. Start:", refined.substring(0, 100))
+            }
+          } else {
+            console.error("[GENERATE] OpenAI API error during refinement:", res.status, await res.text())
+          }
+        } catch (refineErr) {
+          console.error("[GENERATE] Error during AI refinement:", refineErr)
+          // Fallback: manter o roteiro original
+        }
+      } else {
+        console.log("[GENERATE] OPENAI_API_KEY not set, skipping extras refinement")
+      }
+    }
 
     // --- Save result to DB + sync reordered cities/tours to answers ---
     // Atualizar answers.cidades com a ordem correta para que o Timeline do frontend reflita o roteiro
