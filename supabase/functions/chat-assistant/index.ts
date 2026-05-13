@@ -108,7 +108,7 @@ serve(async (req) => {
     // --- Fetch itinerary + answers + messages + tours ---
     const [itinRes, answersRes, messagesRes, toursRes] = await Promise.all([
       supabase.from("itineraries").select("id, generated_result").eq("id", itinerary_id).eq("user_id", userId).single(),
-      supabase.from("itinerary_answers").select("nome, email, perfil, adultos, criancas, data_ida, data_volta, dias_total, cidades, hotel_estrelas, hotel_opcao, hotel_nome, passeios, ocasiao_especial, ocasiao_detalhe, orcamento, extras").eq("itinerary_id", itinerary_id).single(),
+      supabase.from("itinerary_answers").select("nome, email, perfil, adultos, criancas, data_ida, data_volta, dias_total, cidades, hotel_estrelas, hotel_opcao, hotel_nome, passeios, ocasiao_especial, ocasiao_detalhe, ocasiao_data, orcamento, extras").eq("itinerary_id", itinerary_id).single(),
       supabase.from("chat_messages").select("role, content").eq("itinerary_id", itinerary_id).order("created_at", { ascending: true }).limit(50),
       supabase.from("tours").select("id, nome, valor_por_pessoa, cidade_base, duration, link_url, tipo_passeio, disponibilidade, horario_saida, horario_retorno").eq("ativo", true),
     ])
@@ -188,7 +188,7 @@ serve(async (req) => {
           .join(", ")
         itineraryContext += `Passeios escolhidos: ${passeiosNomes}\n`
       }
-      if (answers.ocasiao_especial) itineraryContext += `Ocasiao especial: ${answers.ocasiao_detalhe || answers.ocasiao_especial}\n`
+      if (answers.ocasiao_especial) itineraryContext += `Ocasiao especial: ${answers.ocasiao_detalhe || answers.ocasiao_especial}${answers.ocasiao_data ? ` em ${answers.ocasiao_data}` : ""}\n`
       if (answers.orcamento) itineraryContext += `Orcamento: ${answers.orcamento}\n`
       if (answers.extras) itineraryContext += `Extras: ${answers.extras}\n`
     }

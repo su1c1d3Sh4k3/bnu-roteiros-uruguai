@@ -743,6 +743,29 @@ serve(async (req) => {
       preRoteiro.push("")
     }
 
+    // Parse special occasion date to find which day of the trip it falls on
+    const hasOcasiao = answers.ocasiao_especial?.startsWith("Sim") && answers.ocasiao_detalhe
+    const ocasiaoDetalhe = answers.ocasiao_detalhe || ""
+    const ocasiaoData = answers.ocasiao_data || ""
+    let ocasiaoDayIdx = -1 // which trip day (0-based) is the occasion
+
+    if (hasOcasiao && ocasiaoData && tripStart) {
+      const ocasiaoDate = parseDate(ocasiaoData)
+      if (ocasiaoDate) {
+        const diffMs = ocasiaoDate.getTime() - tripStart.getTime()
+        const diffDays = Math.round(diffMs / 86400000)
+        if (diffDays >= 0 && diffDays < totalDays) {
+          ocasiaoDayIdx = diffDays
+        }
+      }
+    }
+
+    // If no dates but has occasion, add a general note at top
+    if (hasOcasiao && !tripStart) {
+      preRoteiro.push(`\uD83C\uDF89 **Data especial durante a viagem: ${ocasiaoDetalhe}${ocasiaoData ? ` (${ocasiaoData})` : ""}**`)
+      preRoteiro.push("")
+    }
+
     // Generate each day
     if (totalDays > 0) {
       let currentCity = citySchedule[0]
@@ -775,13 +798,18 @@ serve(async (req) => {
         const suppressCityChange = cityChanged && prevWasTransportTour
 
         // Build day header with or without dates
+        const isOcasiaoDay = i === ocasiaoDayIdx
+        const ocasiaoTag = isOcasiaoDay ? ` \uD83C\uDF89` : ""
         if (tripStart) {
           const d = new Date(tripStart.getTime() + i * 86400000)
           const dateStr = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`
           const diaSemana = getDiaSemana(d)
-          preRoteiro.push(`### Dia ${i + 1} - ${dateStr} (${diaSemana}) - ${cityName}`)
+          preRoteiro.push(`### Dia ${i + 1} - ${dateStr} (${diaSemana}) - ${cityName}${ocasiaoTag}`)
         } else {
-          preRoteiro.push(`### Dia ${i + 1} - ${cityName}`)
+          preRoteiro.push(`### Dia ${i + 1} - ${cityName}${ocasiaoTag}`)
+        }
+        if (isOcasiaoDay) {
+          preRoteiro.push(`- \uD83C\uDF89 **${ocasiaoDetalhe}**`)
         }
 
         // PONTO 1: Van compartilhada só para 1 pessoa no trecho Aeroporto MVD ↔ Hotel MVD
