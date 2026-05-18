@@ -929,18 +929,34 @@ serve(async (req) => {
     const comboTourIds = new Set<string>(activeCombo ? (activeCombo.tour_ids as string[]) : [])
 
     if (activeCombo && comboTourIds.size > 0) {
-      // Verificar quantos tours do combo foram efetivamente alocados
-      const comboTours = allocatedTours.filter(ta => comboTourIds.has(ta.id))
-      const nonComboTours = allocatedTours.filter(ta => !comboTourIds.has(ta.id))
+      // Mapa de substituicoes: tours removidos por regras multi-destino e seus substitutos
+      const comboSubstitutions: Record<string, string> = {}
+      if (hasThreeCities && comboTourIds.has("city_pde")) {
+        // city_pde removido por regra 3 cidades → daytour_pde e substituto valido
+        if (!passeiosIds.includes("city_pde") && passeiosIds.includes("daytour_pde")) {
+          comboSubstitutions["city_pde"] = "daytour_pde"
+        }
+      }
+
+      // Expandir comboTourIds com substitutos para matching
+      const effectiveComboIds = new Set<string>(comboTourIds)
+      for (const [original, substitute] of Object.entries(comboSubstitutions)) {
+        effectiveComboIds.delete(original)
+        effectiveComboIds.add(substitute)
+      }
+
+      const comboTours = allocatedTours.filter(ta => effectiveComboIds.has(ta.id))
+      const nonComboTours = allocatedTours.filter(ta => !effectiveComboIds.has(ta.id))
       const allComboTourIds = activeCombo.tour_ids as string[]
+      const expectedComboCount = allComboTourIds.length
       const somaIndividualTotal = allComboTourIds.reduce((s: number, id: string) => {
         const t = toursMap[id]
         return s + (t ? Number(t.valor_por_pessoa) : 0)
       }, 0)
       const comboPreco = Number(activeCombo.preco_combo)
 
-      // Só aplicar combo se TODOS os tours foram alocados
-      if (comboTours.length === allComboTourIds.length) {
+      // Aplicar combo se todos os tours (ou substitutos) foram alocados
+      if (comboTours.length >= expectedComboCount) {
         const custoCombo = comboPreco * total
         totalPasseios += custoCombo
         const economiaTotal = (somaIndividualTotal - comboPreco) * total
