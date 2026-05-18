@@ -1163,7 +1163,14 @@ INSTRUCOES:
 9. IMPORTANTE: Use os precos EXATOS do catalogo de tours e transfers fornecido acima. Nao invente precos.
 10. TRANSFER PRIVATIVO: quando o cliente pedir transfer privativo para um passeio (ex: "transfer privativo para o City Tour"), use o preco do transfer privativo da cidade correspondente (ex: "Aeroporto de Montevideo" para passeios em Montevideo = R$${getTransferPrice(transfersMap["aeroporto_mvd"] || transfers[0])}/trecho para ${total} pax). INCLUA o valor no orcamento e no total — nao deixe como "sob consulta".
 11. NUNCA remova passeios, transfers ou itens do roteiro original a menos que o cliente peca explicitamente.
-12. Se o cliente pedir algo que voce nao consegue precificar com o catalogo, inclua no roteiro com a nota "(valor sob consulta)" mas NUNCA omita do roteiro.`
+12. Se o cliente pedir algo que voce nao consegue precificar com o catalogo, inclua no roteiro com a nota "(valor sob consulta)" mas NUNCA omita do roteiro.
+
+REGRAS ABSOLUTAS — NUNCA VIOLAR:
+13. NUNCA altere a ORDEM das cidades. A sequencia de cidades ja foi calculada pelo sistema e DEVE ser mantida exatamente como esta.
+14. NUNCA altere o NUMERO DE NOITES em cada cidade. Se o roteiro original tem 2 noites em Punta del Este, 2 em Montevideo e 2 em Colonia, o roteiro refinado DEVE manter exatamente essas quantidades.
+15. NUNCA adicione ou remova DIAS do roteiro. O numero total de dias DEVE ser identico ao original.
+16. NUNCA mude em qual cidade o cliente dorme cada noite. Os headers "### Dia X - Cidade" DEVEM ser identicos ao original.
+17. Voce so pode modificar o CONTEUDO dentro de cada dia (adicionar notas, trocar passeios, ajustar detalhes), mas a ESTRUTURA do roteiro (dias, cidades, noites) e INTOCAVEL.`
 
           const res = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
@@ -1186,8 +1193,15 @@ INSTRUCOES:
             const refined = data?.choices?.[0]?.message?.content || ""
             // Validar: deve conter estrutura de roteiro
             if (refined && (refined.includes("## Pre-Roteiro") || refined.includes("## Pré-Roteiro") || refined.includes("### Dia"))) {
-              console.log("[GENERATE] AI refinement applied successfully, length:", refined.length)
-              resultText = refined
+              // Validar que a IA não mudou o número de dias
+              const originalDayCount = (resultText.match(/### Dia \d+/g) || []).length
+              const refinedDayCount = (refined.match(/### Dia \d+/g) || []).length
+              if (refinedDayCount !== originalDayCount) {
+                console.log(`[GENERATE] AI refinement REJECTED: changed day count from ${originalDayCount} to ${refinedDayCount}`)
+              } else {
+                console.log("[GENERATE] AI refinement applied successfully, length:", refined.length)
+                resultText = refined
+              }
             } else {
               console.log("[GENERATE] AI refinement did not pass validation, keeping original. Start:", refined.substring(0, 100))
             }
