@@ -105,12 +105,14 @@ serve(async (req) => {
       )
     }
 
-    // --- Fetch itinerary + answers + messages + tours ---
-    const [itinRes, answersRes, messagesRes, toursRes] = await Promise.all([
+    // --- Fetch itinerary + answers + messages + tours + transfers ---
+    const [itinRes, answersRes, messagesRes, toursRes, transfersRes, citiesRes] = await Promise.all([
       supabase.from("itineraries").select("id, generated_result").eq("id", itinerary_id).eq("user_id", userId).single(),
-      supabase.from("itinerary_answers").select("nome, email, perfil, adultos, criancas, data_ida, data_volta, dias_total, cidades, hotel_estrelas, hotel_opcao, hotel_nome, passeios, ocasiao_especial, ocasiao_detalhe, ocasiao_data, orcamento, extras").eq("itinerary_id", itinerary_id).single(),
-      supabase.from("chat_messages").select("role, content").eq("itinerary_id", itinerary_id).order("created_at", { ascending: true }).limit(50),
-      supabase.from("tours").select("id, nome, valor_por_pessoa, cidade_base, duration, link_url, tipo_passeio, disponibilidade, horario_saida, horario_retorno").eq("ativo", true),
+      supabase.from("itinerary_answers").select("nome, email, perfil, adultos, criancas, data_ida, data_volta, dias_total, datas_definidas, cidades, hotel_estrelas, hotel_opcao, hotel_nome, hotel_quartos, passeios, ocasiao_especial, ocasiao_detalhe, ocasiao_data, orcamento, extras, combo_id").eq("itinerary_id", itinerary_id).single(),
+      supabase.from("chat_messages").select("role, content").eq("itinerary_id", itinerary_id).order("created_at", { ascending: true }),
+      supabase.from("tours").select("id, nome, valor_por_pessoa, cidade_base, duration, link_url, tipo_passeio, disponibilidade, horario_saida, horario_retorno, emoji").eq("ativo", true).order("sort_order"),
+      supabase.from("transfers").select("id, nome, price_1_2, price_3_6, price_7_11, price_12_15").eq("ativo", true),
+      supabase.from("cities").select("id, nome, emoji").order("sort_order"),
     ])
 
     const itinerary = itinRes.data
@@ -122,13 +124,26 @@ serve(async (req) => {
     }
 
     const answers = answersRes.data
-    const existingMessages = messagesRes.data
+    const existingMessages = messagesRes.data || []
     const allTours = toursRes.data || []
+    const allTransfers = transfersRes.data || []
+    const allCities = citiesRes.data || []
 
-    // Build tour ID → name map for resolving IDs
-    const toursMap: Record<string, { nome: string; valor_por_pessoa: number; cidade_base: string; duration: string; link_url: string; tipo_passeio: string; disponibilidade: string; horario_saida: string; horario_retorno: string }> = {}
-    for (const t of allTours) {
-      toursMap[t.id] = t
+    // Build maps
+    const toursMap: Record<string, typeof allTours[0]> = {}
+    for (const t of allTours) toursMap[t.id] = t
+
+    const citiesMap: Record<string, string> = {}
+    for (const c of allCities) citiesMap[c.id] = c.nome
+
+    const total = (answers?.adultos || 1) + (answers?.criancas || 0)
+
+    const getTransferPrice = (tr: typeof allTransfers[0]): number => {
+      if (!tr) return 0
+      if (total <= 2) return Number(tr.price_1_2) || 0
+      if (total <= 6) return Number(tr.price_3_6) || 0
+      if (total <= 11) return Number(tr.price_7_11) || 0
+      return Number(tr.price_12_15) || 0
     }
 
     // --- Save user message ---
@@ -144,9 +159,9 @@ serve(async (req) => {
       )
     }
 
-    // --- Build conversation history ---
+    // --- Build FULL conversation history (sem limite arbitrario) ---
     const conversationHistory = [
-      ...(existingMessages || []).map((m: { role: string; content: string }) => ({
+      ...existingMessages.map((m: { role: string; content: string }) => ({
         role: m.role,
         content: m.content,
       })),
@@ -160,40 +175,70 @@ serve(async (req) => {
       getItineraryRules(supabase),
     ])
 
-    // --- Build itinerary context ---
+    // --- Build complete context ---
     let itineraryContext = ""
     if (answers) {
-      itineraryContext += "\n\n═══════════════════════════════════════\nDADOS DO CLIENTE E DA VIAGEM:\n═══════════════════════════════════════\n"
-      itineraryContext += `Nome: ${answers.nome || "N/A"}\n`
-      itineraryContext += `Perfil: ${answers.perfil || "N/A"}\n`
-      itineraryContext += `Adultos: ${answers.adultos || 0}, Criancas: ${answers.criancas || 0}\n`
-      if (answers.data_ida) itineraryContext += `Periodo: ${answers.data_ida} a ${answers.data_volta || "N/A"} (${answers.dias_total || "?"} dias)\n`
-      if (answers.cidades) itineraryContext += `Cidades: ${JSON.stringify(answers.cidades)}\n`
-      if (answers.hotel_estrelas) {
-        const hq = (answers.hotel_quartos || {}) as Record<string, number>
-        const quartosInfo: string[] = []
-        if (hq.individual > 0) quartosInfo.push(`${hq.individual} individual${hq.individual > 1 ? "is" : ""}`)
-        if (hq.duplo > 0) quartosInfo.push(`${hq.duplo} duplo${hq.duplo > 1 ? "s" : ""}`)
-        if (hq.triplo > 0) quartosInfo.push(`${hq.triplo} triplo${hq.triplo > 1 ? "s" : ""}`)
-        const quartosStr = quartosInfo.length > 0 ? ` - Quartos: ${quartosInfo.join(" + ")}` : ""
-        itineraryContext += `Hotel: ${answers.hotel_estrelas} estrelas${quartosStr}${answers.hotel_opcao ? ` (${answers.hotel_opcao})` : ""}${answers.hotel_nome ? ` - ${answers.hotel_nome}` : ""}\n`
-      }
+      const cidadesObj = (answers.cidades || {}) as Record<string, number>
+      const cidadesStr = Object.entries(cidadesObj)
+        .map(([k, v]) => `${citiesMap[k] || k}: ${v} noites`)
+        .join(", ")
+
+      const hotelQuartos = (answers.hotel_quartos || {}) as Record<string, number>
+      const quartosInfo: string[] = []
+      if (hotelQuartos.individual > 0) quartosInfo.push(`${hotelQuartos.individual} individual${hotelQuartos.individual > 1 ? "is" : ""}`)
+      if (hotelQuartos.duplo > 0) quartosInfo.push(`${hotelQuartos.duplo} duplo${hotelQuartos.duplo > 1 ? "s" : ""}`)
+      if (hotelQuartos.triplo > 0) quartosInfo.push(`${hotelQuartos.triplo} triplo${hotelQuartos.triplo > 1 ? "s" : ""}`)
+
+      itineraryContext += `\n\n═══════════════════════════════════════
+DADOS COMPLETOS DO CLIENTE E DA VIAGEM
+═══════════════════════════════════════
+Nome: ${answers.nome || "N/A"}
+Perfil: ${answers.perfil || "N/A"}
+Pessoas: ${total} (${answers.adultos || 0} adultos, ${answers.criancas || 0} criancas)
+Datas: ${answers.data_ida ? `${answers.data_ida} a ${answers.data_volta || "N/A"}` : (answers.dias_total ? `${answers.dias_total} dias (sem datas definidas)` : "flexivel")}
+Cidades e noites: ${cidadesStr || "N/A"}
+Hotel: ${answers.hotel_estrelas ? `${answers.hotel_estrelas} estrelas` : "N/A"}${answers.hotel_opcao ? ` (${answers.hotel_opcao})` : ""}${answers.hotel_nome ? ` - ${answers.hotel_nome}` : ""}
+Quartos: ${quartosInfo.join(" + ") || "N/A"}
+Orcamento: ${answers.orcamento || "N/A"}
+Ocasiao especial: ${answers.ocasiao_especial?.startsWith("Sim") ? `${answers.ocasiao_detalhe || "sim"}${answers.ocasiao_data ? ` em ${answers.ocasiao_data}` : ""}` : "nenhuma"}
+Informacoes adicionais: ${answers.extras || "nenhuma"}\n`
+
       if (answers.passeios) {
         const passeiosList = Array.isArray(answers.passeios) ? answers.passeios : []
-        const passeiosNomes = passeiosList
+        const passeiosDetalhados = passeiosList
           .map((id: string) => {
             const t = toursMap[id]
-            return t ? `${t.nome} (R$${t.valor_por_pessoa}, ${t.duration || "N/A"}, ${t.link_url || ""})` : id
+            return t ? `- ${t.nome} | R$${t.valor_por_pessoa}/pessoa | ${t.tipo_passeio || "Diurno"} | ${t.duration || "N/A"} | ${t.disponibilidade || "todos os dias"} | Saida: ${t.horario_saida || "N/A"} | ${t.link_url || ""}` : `- ${id} (nao encontrado)`
           })
-          .join(", ")
-        itineraryContext += `Passeios escolhidos: ${passeiosNomes}\n`
+          .join("\n")
+        itineraryContext += `\nPasseios selecionados:\n${passeiosDetalhados}\n`
       }
-      if (answers.ocasiao_especial) itineraryContext += `Ocasiao especial: ${answers.ocasiao_detalhe || answers.ocasiao_especial}${answers.ocasiao_data ? ` em ${answers.ocasiao_data}` : ""}\n`
-      if (answers.orcamento) itineraryContext += `Orcamento: ${answers.orcamento}\n`
-      if (answers.extras) itineraryContext += `Extras: ${answers.extras}\n`
     }
+
+    // Catalogo completo de passeios e transfers
+    itineraryContext += `\n═══════════════════════════════════════
+CATALOGO COMPLETO DE PASSEIOS DISPONIVEIS
+═══════════════════════════════════════\n`
+    itineraryContext += allTours.map(t =>
+      `- ${t.nome} (ID: ${t.id}) | R$${t.valor_por_pessoa}/pessoa | Tipo: ${t.tipo_passeio || "Diurno"} | Cidade: ${citiesMap[t.cidade_base] || t.cidade_base} | Duracao: ${t.duration || "N/A"} | Saida: ${t.horario_saida || "N/A"} - ${t.horario_retorno || "N/A"} | Disponibilidade: ${t.disponibilidade || "todos os dias"} | ${t.link_url || ""}`
+    ).join("\n")
+
+    itineraryContext += `\n\n═══════════════════════════════════════
+CATALOGO DE TRANSFERS
+═══════════════════════════════════════\n`
+    itineraryContext += allTransfers.map(t => {
+      const prices: string[] = []
+      if (Number(t.price_1_2) > 0) prices.push(`1-2 pax: R$${t.price_1_2}`)
+      if (Number(t.price_3_6) > 0) prices.push(`3-6 pax: R$${t.price_3_6}`)
+      if (Number(t.price_7_11) > 0) prices.push(`7-11 pax: R$${t.price_7_11}`)
+      if (Number(t.price_12_15) > 0) prices.push(`12-15 pax: R$${t.price_12_15}`)
+      return `- ${t.nome} (ID: ${t.id}): ${prices.join(" | ")}`
+    }).join("\n")
+
     if (itinerary.generated_result) {
-      itineraryContext += "\n═══════════════════════════════════════\nROTEIRO ATUAL DO CLIENTE:\n═══════════════════════════════════════\n"
+      itineraryContext += `\n\n═══════════════════════════════════════
+ROTEIRO ATUAL DO CLIENTE
+═══════════════════════════════════════\n`
       itineraryContext += itinerary.generated_result
     }
 
@@ -214,15 +259,15 @@ serve(async (req) => {
     if (itinerary.generated_result) {
       const classifyPrompt = `Voce e um classificador. Analise a ultima mensagem do usuario no contexto da conversa e responda SOMENTE "SIM" ou "NAO".
 
-Responda "SIM" se o usuario esta pedindo qualquer alteracao, ajuste, troca, adicao, remocao ou modificacao no roteiro ou orcamento da viagem. Exemplos: trocar passeio, inverter dias, adicionar atividade, remover passeio, mudar hotel, recalcular valores, etc.
+Responda "SIM" se o usuario esta pedindo qualquer alteracao, ajuste, troca, adicao, remocao ou modificacao no roteiro ou orcamento da viagem. Exemplos: trocar passeio, inverter dias, adicionar atividade, remover passeio, mudar hotel, recalcular valores, pedir transfer privativo, etc.
 
-Responda "NAO" se o usuario esta apenas fazendo uma pergunta, tirando duvida, pedindo informacao, agradecendo, ou qualquer coisa que NAO seja um pedido de alteracao no roteiro.
+Responda "NAO" se o usuario esta apenas fazendo uma pergunta, tirando duvida, pedindo informacao, agradecendo, cumprimentando, ou qualquer coisa que NAO seja um pedido de alteracao no roteiro.
 
 Responda apenas SIM ou NAO, nada mais.`
 
       const classifyData = await callOpenAI(openaiKey, [
         { role: "system", content: classifyPrompt },
-        ...conversationHistory.slice(-6), // last few messages for context
+        ...conversationHistory.slice(-10),
       ], 5)
 
       const classification = (classifyData as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content?.trim()?.toUpperCase() || "NAO"
@@ -232,46 +277,90 @@ Responda apenas SIM ou NAO, nada mais.`
       // STEP 2a: If modification requested, generate updated itinerary
       // ════════════════════════════════════════════════════════
       if (classification.startsWith("SIM")) {
-        const modifySystemPrompt = `Voce e um assistente que modifica roteiros de viagem ao Uruguai. O cliente pediu uma alteracao. Aplique a alteracao solicitada e retorne o roteiro COMPLETO atualizado.
 
+        // Extrair numero de dias do roteiro original para validacao
+        const originalDayCount = (itinerary.generated_result.match(/### Dia \d+/g) || []).length
+
+        const modifySystemPrompt = `Voce e um assistente de modificacao de roteiros da Brasileiros no Uruguai.
+O cliente pediu uma alteracao no roteiro. Aplique a alteracao solicitada e retorne o roteiro COMPLETO atualizado.
+
+═══════════════════════════════════════
+ESTRUTURA INTOCAVEL — VIOLACAO = REJEICAO
+═══════════════════════════════════════
+O roteiro foi calculado por algoritmo. A estrutura e SAGRADA:
+- A ORDEM das cidades NAO pode mudar
+- O NUMERO DE NOITES em cada cidade NAO pode mudar
+- O NUMERO TOTAL DE DIAS NAO pode mudar (deve ter exatamente ${originalDayCount} dias)
+- Os headers "### Dia X" DEVEM ser copiados IDENTICOS do original
+- A cidade de cada dia NAO pode mudar
+- Chegada e Partida DEVEM permanecer nos mesmos dias
+- Check-in e check-out DEVEM permanecer nos mesmos dias
+- Transfers entre cidades DEVEM permanecer nos mesmos dias
+
+═══════════════════════════════════════
+O QUE VOCE PODE MODIFICAR
+═══════════════════════════════════════
+- Trocar um passeio por outro (desde que caiba no mesmo dia/cidade/horario)
+- Adicionar ou remover um passeio em um dia livre
+- Trocar tipo de transfer (compartilhado → privativo)
+- Adicionar notas ou sugestoes dentro de um dia
+- Recalcular valores no orcamento QUANDO houver troca de passeio/transfer
+
+═══════════════════════════════════════
+REGRAS DE NEGOCIO
+═══════════════════════════════════════
 ${itineraryRules}
 
-INSTRUCOES:
-- Retorne o roteiro COMPLETO (Pre-Roteiro dia a dia + Pre-Orcamento Estimado).
-- Mantenha o mesmo formato markdown do roteiro original (## para secoes, ### para dias, - para bullets com emojis).
-- Recalcule o orcamento se houver mudanca em passeios, noites ou transfers.
-- Nao adicione explicacoes, apenas o roteiro atualizado.
-- Se a alteracao pedida for impossivel, retorne o roteiro original sem modificacoes.
+- Use SOMENTE precos do catalogo. NUNCA invente precos.
+- NUNCA remova itens que o cliente nao pediu para remover.
+- Passeios "Dia Todo" ocupam o dia inteiro — nao combine com diurnos.
+- Passeios Noturnos podem ser combinados com Diurnos no mesmo dia.
+- Em dias de mudanca de cidade, apenas passeios Noturnos.
+- Van compartilhada: APENAS para 1 pessoa, APENAS trecho Aeroporto MVD <-> Hotel MVD.
+
+═══════════════════════════════════════
+FORMATO DE SAIDA
+═══════════════════════════════════════
+- Retorne o roteiro COMPLETO (Pre-Roteiro + Pre-Orcamento).
+- Mesmo formato markdown do original (## secoes, ### dias, - bullets).
+- NAO adicione explicacoes, comentarios ou texto fora do roteiro.
+- Se a alteracao for impossivel, retorne o roteiro original SEM modificacao.
 
 ${itineraryContext}`
 
         const modifyData = await callOpenAI(openaiKey, [
           { role: "system", content: modifySystemPrompt },
-          ...conversationHistory.slice(-6),
-        ], 4000)
+          ...conversationHistory.slice(-10),
+        ], 5000)
 
         const updatedContent = (modifyData as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content || ""
 
-        // Validate: must contain Pre-Roteiro structure
+        // Validar: deve conter estrutura de roteiro E manter numero de dias
         if (updatedContent && (updatedContent.includes("## Pre-Roteiro") || updatedContent.includes("## Pré-Roteiro") || updatedContent.includes("### Dia"))) {
-          const { error: updateError } = await supabase
-            .from("itineraries")
-            .update({ generated_result: updatedContent })
-            .eq("id", itinerary_id)
-            .eq("user_id", userId)
+          const updatedDayCount = (updatedContent.match(/### Dia \d+/g) || []).length
 
-          if (updateError) {
-            console.error("Error updating itinerary:", updateError)
+          if (updatedDayCount !== originalDayCount) {
+            console.log(`[CHAT] Modification REJECTED: day count changed from ${originalDayCount} to ${updatedDayCount}`)
           } else {
-            itineraryUpdated = true
-            console.log("[CHAT] Itinerary updated successfully, length:", updatedContent.length)
+            const { error: updateError } = await supabase
+              .from("itineraries")
+              .update({ generated_result: updatedContent })
+              .eq("id", itinerary_id)
+              .eq("user_id", userId)
+
+            if (updateError) {
+              console.error("Error updating itinerary:", updateError)
+            } else {
+              itineraryUpdated = true
+              console.log("[CHAT] Itinerary updated successfully, length:", updatedContent.length)
+            }
           }
         } else {
           console.log("[CHAT] Generated content did not pass validation, skipping update. Content start:", updatedContent.substring(0, 100))
         }
 
         // ════════════════════════════════════════════════════════
-        // STEP 2b: Generate conversational reply acknowledging the change
+        // STEP 2b: Generate conversational reply
         // ════════════════════════════════════════════════════════
         const replySystemPrompt = basePrompt + extraDocs + itineraryContext +
           (itineraryUpdated
@@ -281,7 +370,7 @@ ${itineraryContext}`
         const replyData = await callOpenAI(openaiKey, [
           { role: "system", content: replySystemPrompt },
           ...conversationHistory,
-        ], 350)
+        ], 400)
 
         replyText = (replyData as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content || (itineraryUpdated ? "Pronto! Atualizei o seu roteiro. Da uma olhada!" : "Nao consegui aplicar a alteracao. Pode tentar de outra forma?")
       }
@@ -295,7 +384,7 @@ ${itineraryContext}`
       const chatData = await callOpenAI(openaiKey, [
         { role: "system", content: chatSystemPrompt },
         ...conversationHistory,
-      ], 350)
+      ], 400)
 
       replyText = (chatData as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content || "Nao consegui responder agora. Tente novamente!"
     }

@@ -1129,48 +1129,82 @@ serve(async (req) => {
             return `- ${t.nome} (ID: ${t.id}): ${prices.join(" | ")}`
           }).join("\n")
 
-          const refinePrompt = `Voce e o Rodrigo, consultor da Brasileiros no Uruguai. O sistema gerou um roteiro automatico para o cliente, mas o cliente deixou observacoes no campo "Informacoes Adicionais". Sua tarefa e analisar o roteiro e as observacoes do cliente e fazer os ajustes necessarios.
+          const refinePrompt = `Voce e um assistente de refinamento de roteiros da agencia Brasileiros no Uruguai.
 
+O sistema gerou um roteiro DETERMINISTICO e CORRETO para o cliente. O cliente deixou observacoes no campo "Informacoes Adicionais". Sua UNICA tarefa e aplicar ajustes MINIMOS e CIRURGICOS ao roteiro baseados nessas observacoes.
+
+═══════════════════════════════════════
+ESTRUTURA INTOCAVEL — VIOLACAO = REJEICAO
+═══════════════════════════════════════
+O roteiro abaixo foi calculado por algoritmo. A estrutura e SAGRADA:
+- A ORDEM das cidades NAO pode mudar
+- O NUMERO DE NOITES em cada cidade NAO pode mudar
+- O NUMERO TOTAL DE DIAS NAO pode mudar
+- Os headers "### Dia X" DEVEM ser copiados IDENTICOS do original
+- A cidade de cada dia NAO pode mudar
+- Chegada e Partida DEVEM permanecer nos mesmos dias
+- Check-in e check-out DEVEM permanecer nos mesmos dias
+- Transfers entre cidades DEVEM permanecer nos mesmos dias
+
+Se voce alterar QUALQUER item acima, o roteiro sera REJEITADO pelo sistema e suas alteracoes serao descartadas.
+
+═══════════════════════════════════════
+O QUE VOCE PODE MODIFICAR
+═══════════════════════════════════════
+- Adicionar uma NOTA textual dentro de um dia (ex: "Sugestao: restaurante X para o jantar")
+- Trocar um passeio por outro (desde que o novo caiba no mesmo dia/cidade/horario)
+- Adicionar informacao relevante ao pedido do cliente (ex: restricoes alimentares, preferencias)
+- Ajustar tipo de transfer (compartilhado → privativo) SE o cliente pedir
+- Recalcular valores no orcamento APENAS se houve troca de passeio/transfer
+
+═══════════════════════════════════════
+REGRAS DE NEGOCIO
+═══════════════════════════════════════
 ${itineraryRules}
 
-DADOS DA VIAGEM:
+- Use SOMENTE precos do catalogo abaixo. NUNCA invente precos.
+- NUNCA remova passeios a menos que o cliente peca explicitamente.
+- Se o cliente pedir algo sem preco no catalogo, inclua com "(valor sob consulta)".
+- Transfer privativo: use o preco da tabela de transfers para ${total} pessoas (R$${getTransferPrice(transfersMap["aeroporto_mvd"] || transfers[0])}/trecho).
+- Passeios "Dia Todo" ocupam o dia inteiro — nao combine com outros passeios diurnos.
+- Passeios Noturnos podem ser combinados com Diurnos no mesmo dia.
+- Em dias de mudanca de cidade (transfer), apenas passeios Noturnos sao permitidos.
+- Van compartilhada: APENAS para 1 pessoa no trecho Aeroporto MVD <-> Hotel MVD.
+
+═══════════════════════════════════════
+DADOS DA VIAGEM
+═══════════════════════════════════════
 - Pessoas: ${total} (${answers.adultos || 1} adultos, ${answers.criancas || 0} criancas)
-- Cidades: ${cidadesStr}
+- Cidades e noites: ${cidadesStr}
 - Hotel: ${hotelStr}
 - Quartos: ${quartosResumoStr}
 
-CATALOGO DE PASSEIOS DISPONIVEIS:
+CATALOGO DE PASSEIOS:
 ${catalogoTours}
 
-CATALOGO DE TRANSFERS DISPONIVEIS:
+CATALOGO DE TRANSFERS:
 ${catalogoTransfers}
 
-ROTEIRO GERADO PELO SISTEMA:
+═══════════════════════════════════════
+ROTEIRO ORIGINAL (COPIAR ESTRUTURA IDENTICA)
+═══════════════════════════════════════
 ${resultText}
 
-INFORMACOES ADICIONAIS DO CLIENTE:
+═══════════════════════════════════════
+OBSERVACOES DO CLIENTE
+═══════════════════════════════════════
 "${extrasText}"
 
-INSTRUCOES:
-1. Analise cuidadosamente o que o cliente escreveu em "Informacoes Adicionais".
-2. Compare com o roteiro gerado e identifique o que precisa ser adaptado.
-3. Exemplos de adaptacoes: trocar tipo de transfer (compartilhado por privativo), adicionar/remover passeios, ajustar horarios, incluir pedidos especiais, etc.
-4. Retorne o roteiro COMPLETO atualizado (Pre-Roteiro dia a dia + Pre-Orcamento Estimado).
-5. Mantenha EXATAMENTE o mesmo formato markdown do roteiro original (## para secoes, ### para dias, - para bullets com emojis).
-6. Recalcule o orcamento se houver mudanca em passeios, transfers ou hospedagem. O total DEVE refletir as mudancas.
-7. NAO adicione explicacoes ou comentarios fora do roteiro. Retorne SOMENTE o roteiro completo.
-8. Se as observacoes do cliente nao exigem mudanca alguma, retorne o roteiro original sem alteracoes.
-9. IMPORTANTE: Use os precos EXATOS do catalogo de tours e transfers fornecido acima. Nao invente precos.
-10. TRANSFER PRIVATIVO: quando o cliente pedir transfer privativo para um passeio (ex: "transfer privativo para o City Tour"), use o preco do transfer privativo da cidade correspondente (ex: "Aeroporto de Montevideo" para passeios em Montevideo = R$${getTransferPrice(transfersMap["aeroporto_mvd"] || transfers[0])}/trecho para ${total} pax). INCLUA o valor no orcamento e no total — nao deixe como "sob consulta".
-11. NUNCA remova passeios, transfers ou itens do roteiro original a menos que o cliente peca explicitamente.
-12. Se o cliente pedir algo que voce nao consegue precificar com o catalogo, inclua no roteiro com a nota "(valor sob consulta)" mas NUNCA omita do roteiro.
-
-REGRAS ABSOLUTAS — NUNCA VIOLAR:
-13. NUNCA altere a ORDEM das cidades. A sequencia de cidades ja foi calculada pelo sistema e DEVE ser mantida exatamente como esta.
-14. NUNCA altere o NUMERO DE NOITES em cada cidade. Se o roteiro original tem 2 noites em Punta del Este, 2 em Montevideo e 2 em Colonia, o roteiro refinado DEVE manter exatamente essas quantidades.
-15. NUNCA adicione ou remova DIAS do roteiro. O numero total de dias DEVE ser identico ao original.
-16. NUNCA mude em qual cidade o cliente dorme cada noite. Os headers "### Dia X - Cidade" DEVEM ser identicos ao original.
-17. Voce so pode modificar o CONTEUDO dentro de cada dia (adicionar notas, trocar passeios, ajustar detalhes), mas a ESTRUTURA do roteiro (dias, cidades, noites) e INTOCAVEL.`
+═══════════════════════════════════════
+INSTRUCOES FINAIS
+═══════════════════════════════════════
+1. Leia as observacoes do cliente.
+2. Identifique EXATAMENTE o que precisa mudar (geralmente algo pequeno).
+3. Copie o roteiro original INTEIRO e aplique APENAS as mudancas necessarias.
+4. Se as observacoes NAO exigem mudanca no roteiro (ex: "nao como frutos do mar"), adicione apenas uma nota relevante no dia apropriado.
+5. Se as observacoes nao exigem NENHUMA mudanca, retorne o roteiro original SEM alteracao alguma.
+6. Retorne SOMENTE o roteiro completo, sem explicacoes antes ou depois.
+7. Mantenha o formato markdown identico (## para secoes, ### para dias, - para bullets).`
 
           const res = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
