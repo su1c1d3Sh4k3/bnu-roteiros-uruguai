@@ -224,6 +224,15 @@ CATALOGO COMPLETO DE PASSEIOS DISPONIVEIS
     ).join("\n")
 
     itineraryContext += `\n\n═══════════════════════════════════════
+PASSEIOS PRIVATIVOS (valor total do grupo, NAO por pessoa)
+═══════════════════════════════════════
+- City Tour Montevideo Privativo: 1-3 pax=R$1.650 | 4-9 pax=R$2.600 | 10-12 pax=R$3.040 | 12-15 pax=R$3.380
+- City Tour Punta del Este Privativo: 1-3 pax=R$3.850 | 4-9 pax=R$4.950 | 10-12 pax=R$5.650 | 12-15 pax=R$6.850
+- City Tour Colonia del Sacramento Privativo: 1-3 pax=R$4.750 | 4-9 pax=R$5.850 | 10-12 pax=R$6.850 | 12-15 pax=R$7.350
+(Demais passeios privativos: valor sob consulta)
+`
+
+    itineraryContext += `\n═══════════════════════════════════════
 CATALOGO DE TRANSFERS
 ═══════════════════════════════════════\n`
     itineraryContext += allTransfers.map(t => {
