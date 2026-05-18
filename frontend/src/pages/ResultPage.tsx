@@ -53,14 +53,34 @@ function MarkdownText({ text, noBold }: { text: string; noBold?: boolean }) {
 // TRIP TIMELINE
 // ═══════════════════════════════════════════════════════
 
-function TripTimeline({ answers, cities }: { answers: WizardAnswers; cities: City[] }) {
+function TripTimeline({ answers, cities, result }: { answers: WizardAnswers; cities: City[]; result?: string | null }) {
   const cidades = answers.cidades || {};
-  const cidadesList = Object.entries(cidades).map(([k, v]) => ({
-    id: k,
-    nome: cities.find(c => c.id === k)?.nome || k,
-    emoji: cities.find(c => c.id === k)?.emoji || '📍',
-    noites: Number(v),
-  })).filter(c => c.noites > 0);
+
+  // Extrair ordem das cidades do roteiro gerado (JSONB nao preserva ordem de chaves)
+  let orderedKeys = Object.keys(cidades);
+  if (result) {
+    const dayHeaders = result.match(/### Dia \d+[^\n]*/g) || [];
+    const seen = new Set<string>();
+    const orderFromResult: string[] = [];
+    for (const h of dayHeaders) {
+      for (const c of cities) {
+        if (h.includes(c.nome) && !seen.has(c.id)) {
+          seen.add(c.id);
+          orderFromResult.push(c.id);
+        }
+      }
+    }
+    if (orderFromResult.length > 0) orderedKeys = orderFromResult;
+  }
+
+  const cidadesList = orderedKeys
+    .filter(k => k in cidades && Number(cidades[k]) > 0)
+    .map(k => ({
+      id: k,
+      nome: cities.find(c => c.id === k)?.nome || k,
+      emoji: cities.find(c => c.id === k)?.emoji || '📍',
+      noites: Number(cidades[k]),
+    }));
 
   const parseDate = (str: string) => {
     if (!str) return null;
@@ -460,7 +480,7 @@ export default function ResultPage() {
           </div>
 
           {/* Timeline */}
-          <TripTimeline answers={answers} cities={cities} />
+          <TripTimeline answers={answers} cities={cities} result={result} />
 
           {/* Roteiro */}
           <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '28px 24px', marginBottom: 20 }}>
