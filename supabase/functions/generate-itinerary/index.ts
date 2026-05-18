@@ -1204,35 +1204,10 @@ INSTRUCOES:
     }
 
     // --- Save result to DB + sync reordered cities/tours to answers ---
-    // Atualizar answers.cidades com a ordem correta para que o Timeline do frontend reflita o roteiro
-    const cidadesReordenadas: Record<string, number> = {}
-    for (let ci = 0; ci < citySchedule.length; ci++) {
-      const cid = citySchedule[ci]
-      if (!cidadesReordenadas[cid]) cidadesReordenadas[cid] = 0
-    }
-    // Contar noites a partir do citySchedule (ignorar arrival day do primeiro)
-    const cidadesContadas: Record<string, number> = {}
-    const firstCityId = citySchedule[0]
-    let counting = false
-    for (let ci = 0; ci < citySchedule.length; ci++) {
-      const cid = citySchedule[ci]
-      if (ci === 0) { counting = true; continue } // skip arrival day
-      if (!cidadesContadas[cid]) cidadesContadas[cid] = 0
-      cidadesContadas[cid]++
-    }
-    // Manter ordem do citySchedule
-    const cidadesOrdenadas: Record<string, number> = {}
-    const seen = new Set<string>()
-    for (const cid of citySchedule) {
-      if (!seen.has(cid)) {
-        cidadesOrdenadas[cid] = cidadesContadas[cid] || cidadesObj[cid] || 1
-        seen.add(cid)
-      }
-    }
-
+    // cidadesObj já tem a ordem correta e noites recalculadas (linhas 473-485)
     await supabase
       .from("itinerary_answers")
-      .update({ cidades: cidadesOrdenadas, passeios: passeiosIds })
+      .update({ cidades: cidadesObj, passeios: passeiosIds })
       .eq("itinerary_id", itinerary_id)
 
     const { error: updateError } = await supabase
