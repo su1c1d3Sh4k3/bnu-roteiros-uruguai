@@ -341,6 +341,14 @@ serve(async (req) => {
       diasPossiveis: number[] // day indices (0-based)
     }
 
+    // ═══════ IDENTIFICAR TOUR DE TRANSPORTE ═══════
+    let transportTourId: string | null = null
+    let transportTransitionDay = -1
+
+    if ((hasThreeCities || hasMvdPde) && totalDays > 0) {
+      transportTourId = hasThreeCities ? "city_col" : "city_pde"
+    }
+
     const tourAllocations: TourAllocation[] = []
     for (const id of passeiosIds) {
       const t = toursMap[id]
@@ -353,6 +361,7 @@ serve(async (req) => {
           const isDeparture = i === totalDays - 1
           const cityOnDay = citySchedule[i] || ""
           const tipo = (t.tipo_passeio || "Diurno")
+          const isTransportTour = id === transportTourId
 
           if (isDeparture) continue
           if (isArrival && tipo !== "Noturno") continue
@@ -366,9 +375,9 @@ serve(async (req) => {
           }
 
           // PONTO 5: Em dias de mudança de cidade (transfer), só permitir Noturno
-          // (exceto se este tour É o tour de transporte designado)
+          // EXCETO se este tour é o tour de transporte designado (city_col/city_pde)
           const isCityChangeDay = i > 0 && citySchedule[i] !== citySchedule[i - 1]
-          if (isCityChangeDay && tipo !== "Noturno") continue
+          if (isCityChangeDay && tipo !== "Noturno" && !isTransportTour) continue
 
           diasPossiveis.push(i)
         }
@@ -390,13 +399,9 @@ serve(async (req) => {
     }
 
     // ═══════ RESTRINGIR TOUR DE TRANSPORTE AO DIA DE TRANSIÇÃO ═══════
-    let transportTourId: string | null = null
-    let transportTransitionDay = -1
-
-    if ((hasThreeCities || hasMvdPde) && tripStart && totalDays > 0) {
+    if ((hasThreeCities || hasMvdPde) && totalDays > 0) {
       const transSourceCity = "mvd"
       const transDestCity = hasThreeCities ? "col" : "pde"
-      transportTourId = hasThreeCities ? "city_col" : "city_pde"
 
       // Encontrar o último dia na cidade de origem antes da cidade de destino
       for (let i = 1; i < citySchedule.length; i++) {
