@@ -647,6 +647,17 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     const eligibleCombos = combos.filter(c => checkComboAvailability(c).available);
     const selectedCombo = answers.combo_id || '';
 
+    // Detectar combos que coincidem com os passeios já selecionados
+    const currentPas = answers.passeios || [];
+    const matchingCombos = eligibleCombos.filter(c =>
+      c.tour_ids.every(tid => currentPas.includes(tid))
+    );
+    // Ordenar: combos que coincidem primeiro
+    const sortedCombos = [
+      ...eligibleCombos.filter(c => matchingCombos.includes(c)),
+      ...eligibleCombos.filter(c => !matchingCombos.includes(c)),
+    ];
+
     if (eligibleCombos.length === 0) {
       return (
         <div>
@@ -664,9 +675,15 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
 
     return (
       <div>
+        {matchingCombos.length > 0 && !selectedCombo && (
+          <div style={{ background: '#F0FDF4', border: '2px solid #22C55E', borderRadius: 12, padding: '14px 18px', marginBottom: 16, fontSize: 14, color: '#166534', lineHeight: 1.6 }}>
+            <strong>Dica!</strong> Seus passeios selecionados combinam com {matchingCombos.length === 1 ? 'o combo' : 'os combos'}: <strong>{matchingCombos.map(c => c.nome).join(', ')}</strong>. Selecione para economizar!
+          </div>
+        )}
         <p style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>Encontramos combos especiais para a sua viagem! Selecione um para economizar:</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {eligibleCombos.map((combo: Combo) => {
+          {sortedCombos.map((combo: Combo) => {
+            const isMatch = matchingCombos.includes(combo);
             const somaIndividual = combo.tour_ids.reduce((s: number, id: string) => s + (tours.find(t => t.id === id)?.valor_por_pessoa || 0), 0);
             const desconto = somaIndividual > 0 ? Math.round((1 - combo.preco_combo / somaIndividual) * 100) : 0;
             const sel = selectedCombo === combo.id;
@@ -686,9 +703,10 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
                 }
               }}
                 style={{
-                  border: `2px solid ${sel ? '#1B6E3C' : '#E2E8F0'}`, borderRadius: 16,
-                  padding: 20, cursor: 'pointer', background: sel ? '#F0FDF4' : 'white', transition: 'all 0.2s',
+                  border: `2px solid ${sel ? '#1B6E3C' : isMatch ? '#22C55E' : '#E2E8F0'}`, borderRadius: 16,
+                  padding: 20, cursor: 'pointer', background: sel ? '#F0FDF4' : isMatch ? '#FEFFF7' : 'white', transition: 'all 0.2s',
                 }}>
+                {isMatch && !sel && <div style={{ background: '#22C55E', color: 'white', borderRadius: 8, padding: '4px 10px', fontSize: 12, fontWeight: 700, marginBottom: 10, display: 'inline-block' }}>Combina com seus passeios!</div>}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <div style={{ fontWeight: 700, fontSize: 16, color: '#1E293B' }}>{combo.emoji} {combo.nome}</div>
                   {sel && <div style={{ background: '#1B6E3C', color: 'white', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700 }}>✓</div>}
@@ -895,6 +913,7 @@ export default function WizardPage() {
               hotel_nome: answersData.hotel_nome || '',
               hotel_quartos: answersData.hotel_quartos || {},
               passeios: answersData.passeios || [],
+              combo_id: answersData.combo_id || '',
               ocasiao_especial: answersData.ocasiao_especial || '',
               ocasiao_detalhe: answersData.ocasiao_detalhe || '',
               ocasiao_data: answersData.ocasiao_data || '',
@@ -959,6 +978,7 @@ export default function WizardPage() {
           hotel_nome: answers.hotel_nome || '',
           hotel_quartos: answers.hotel_quartos || {},
           passeios: answers.passeios || [],
+          combo_id: answers.combo_id || '',
           ocasiao_especial: answers.ocasiao_especial || '',
           ocasiao_detalhe: answers.ocasiao_detalhe || '',
           ocasiao_data: answers.ocasiao_data || '',
