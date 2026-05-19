@@ -415,23 +415,52 @@ serve(async (req) => {
       }
 
       // Restringir diasPossiveis do tour de transporte ao dia de transição
-      // PONTO 3: Se o dia exato não funciona, tentar o último dia disponível em MVD
+      // Ordem de prioridade: dia exato → adiar (manter noites em MVD) → adiantar → transfer
       if (transportTransitionDay >= 0) {
         for (const ta of tourAllocations) {
           if (ta.id === transportTourId) {
-            // Primeiro tentar o dia de transição exato
+            // 1) Tentar o dia de transição exato
             const exactDay = ta.diasPossiveis.filter(d => d === transportTransitionDay)
 
             if (exactDay.length > 0) {
               ta.diasPossiveis = exactDay
             } else {
-              // Dia exato não disponível — procurar o último dia disponível em MVD antes da transição
-              const fallbackDays = ta.diasPossiveis.filter(d => d <= transportTransitionDay && citySchedule[d] === transSourceCity)
-              if (fallbackDays.length > 0) {
-                const bestDay = fallbackDays[fallbackDays.length - 1] // último dia disponível
+              // Dia exato não disponível — buscar alternativas
+              // 2) ADIAR: buscar primeiro dia disponível DEPOIS da transição
+              //    Preferível pois mantém as noites em MVD como o cliente pediu
+              const t = toursMap[ta.id]
+              const delayDays: number[] = []
+              if (t && tripStart) {
+                for (let d = transportTransitionDay + 1; d < totalDays - 1; d++) {
+                  const dateD = new Date(tripStart.getTime() + d * 86400000)
+                  const diaD = getDiaSemana(dateD)
+                  if (isDayAvailable(diaD, t.disponibilidade || "todos os dias")) {
+                    delayDays.push(d)
+                  }
+                }
+              }
+
+              // 3) ADIANTAR: buscar último dia disponível em MVD ANTES da transição
+              const advanceDays = ta.diasPossiveis.filter(d => d <= transportTransitionDay && citySchedule[d] === transSourceCity)
+
+              if (delayDays.length > 0) {
+                // ADIAR — mover noites de COL para MVD
+                const bestDay = delayDays[0]
                 ta.diasPossiveis = [bestDay]
-                // Ajustar citySchedule: mover noites de MVD para COL
-                // Do bestDay+1 até transportTransitionDay, trocar de MVD para COL
+                for (let adj = transportTransitionDay + 1; adj <= bestDay; adj++) {
+                  if (citySchedule[adj] === transDestCity) {
+                    citySchedule[adj] = transSourceCity
+                  }
+                }
+                transportTransitionDay = bestDay
+                const bestDate = new Date(tripStart!.getTime() + bestDay * 86400000)
+                const bestDateStr = `${String(bestDate.getDate()).padStart(2, "0")}/${String(bestDate.getMonth() + 1).padStart(2, "0")}`
+                const bestDiaSemana = getDiaSemana(bestDate)
+                multiDestWarnings.push(`O City Tour Colonia del Sacramento foi adiado para ${bestDateStr} (${bestDiaSemana}) para coincidir com um dia disponível. As noites foram redistribuídas automaticamente entre Montevideo e Colonia del Sacramento.`)
+              } else if (advanceDays.length > 0) {
+                // ADIANTAR — mover noites de MVD para COL
+                const bestDay = advanceDays[advanceDays.length - 1]
+                ta.diasPossiveis = [bestDay]
                 for (let adj = bestDay + 1; adj <= transportTransitionDay; adj++) {
                   if (citySchedule[adj] === transSourceCity) {
                     citySchedule[adj] = transDestCity
@@ -441,46 +470,12 @@ serve(async (req) => {
                 const bestDate = new Date(tripStart!.getTime() + bestDay * 86400000)
                 const bestDateStr = `${String(bestDate.getDate()).padStart(2, "0")}/${String(bestDate.getMonth() + 1).padStart(2, "0")}`
                 const bestDiaSemana = getDiaSemana(bestDate)
-                multiDestWarnings.push(`O City Tour Colonia del Sacramento foi agendado em ${bestDateStr} (${bestDiaSemana}) para coincidir com um dia disponível. As noites foram redistribuídas automaticamente entre Montevideo e Colonia del Sacramento.`)
+                multiDestWarnings.push(`O City Tour Colonia del Sacramento foi adiantado para ${bestDateStr} (${bestDiaSemana}) para coincidir com um dia disponível. As noites foram redistribuídas automaticamente entre Montevideo e Colonia del Sacramento.`)
               } else {
-                // Fallback 2: tentar ADIAR a transição — buscar primeiro dia disponível
-                // DEPOIS da transição original que ainda esteja na cidade destino
-                // Isso permite usar um dia (ex: sábado) em COL para o city_col,
-                // movendo noites de COL para MVD (o cliente fica mais tempo em MVD)
-                const t = toursMap[ta.id]
-                const delayDays: number[] = []
-                if (t && tripStart) {
-                  for (let d = transportTransitionDay + 1; d < totalDays - 1; d++) {
-                    // Verificar disponibilidade por dia da semana
-                    const dateD = new Date(tripStart.getTime() + d * 86400000)
-                    const diaD = getDiaSemana(dateD)
-                    if (isDayAvailable(diaD, t.disponibilidade || "todos os dias")) {
-                      delayDays.push(d)
-                    }
-                  }
-                }
-
-                if (delayDays.length > 0) {
-                  const bestDay = delayDays[0] // primeiro dia disponível após transição
-                  ta.diasPossiveis = [bestDay]
-                  // Ajustar citySchedule: mover noites de COL para MVD
-                  // Do transportTransitionDay+1 até bestDay, trocar de COL para MVD
-                  for (let adj = transportTransitionDay + 1; adj <= bestDay; adj++) {
-                    if (citySchedule[adj] === transDestCity) {
-                      citySchedule[adj] = transSourceCity
-                    }
-                  }
-                  transportTransitionDay = bestDay
-                  const bestDate = new Date(tripStart!.getTime() + bestDay * 86400000)
-                  const bestDateStr = `${String(bestDate.getDate()).padStart(2, "0")}/${String(bestDate.getMonth() + 1).padStart(2, "0")}`
-                  const bestDiaSemana = getDiaSemana(bestDate)
-                  multiDestWarnings.push(`O City Tour Colonia del Sacramento foi adiado para ${bestDateStr} (${bestDiaSemana}) para coincidir com um dia disponível. As noites foram redistribuídas automaticamente entre Montevideo e Colonia del Sacramento.`)
-                } else {
-                  // Nenhum dia disponível — fallback com transfer regular
-                  ta.diasPossiveis = []
-                  if (ta.id === "city_col") {
-                    multiDestWarnings.push(`O City Tour Colonia del Sacramento (deslocamento Montevideo → Colonia) acontece apenas às terças, quintas e sábados. Nenhum dia do roteiro coincide com esses dias. Sugerimos ajustar as datas da viagem ou utilizar transfer privativo.`)
-                  }
+                // 4) Nenhum dia disponível — fallback com transfer regular
+                ta.diasPossiveis = []
+                if (ta.id === "city_col") {
+                  multiDestWarnings.push(`O City Tour Colonia del Sacramento (deslocamento Montevideo → Colonia) acontece apenas às terças, quintas e sábados. Nenhum dia do roteiro coincide com esses dias. Sugerimos ajustar as datas da viagem ou utilizar transfer privativo.`)
                 }
               }
             }
