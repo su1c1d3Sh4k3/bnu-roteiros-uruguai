@@ -73,13 +73,32 @@ function TripTimeline({ answers, cities, result }: { answers: WizardAnswers; cit
     if (orderFromResult.length > 0) orderedKeys = orderFromResult;
   }
 
+  // Extrair noites reais do resultado gerado (podem ter sido redistribuídas pelo backend)
+  const realNights: Record<string, number> = {};
+  if (result) {
+    const hotelMatch = result.match(/### .+ Hospedagem[\s\S]*?(?=###|---|\n\n\n|$)/);
+    if (hotelMatch) {
+      const hotelLines = hotelMatch[0].split('\n');
+      for (const line of hotelLines) {
+        // Match: "- CityName N★ (X noites):"
+        const m = line.match(/- (.+?)\s+\d+★\s+\((\d+)\s+noite/);
+        if (m) {
+          const cityName = m[1].trim();
+          const nights = parseInt(m[2]);
+          const city = cities.find(c => c.nome === cityName);
+          if (city) realNights[city.id] = nights;
+        }
+      }
+    }
+  }
+
   const cidadesList = orderedKeys
-    .filter(k => k in cidades && Number(cidades[k]) > 0)
+    .filter(k => k in cidades && (realNights[k] || Number(cidades[k])) > 0)
     .map(k => ({
       id: k,
       nome: cities.find(c => c.id === k)?.nome || k,
       emoji: cities.find(c => c.id === k)?.emoji || '📍',
-      noites: Number(cidades[k]),
+      noites: realNights[k] || Number(cidades[k]),
     }));
 
   const parseDate = (str: string) => {
