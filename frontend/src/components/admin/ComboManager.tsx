@@ -92,6 +92,13 @@ export default function ComboManager() {
     setEditing({ ...editing, tour_ids: ids });
   };
 
+  const remove = async (id: string, nome: string) => {
+    if (!confirm(`Excluir combo "${nome}"? Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from('combos').delete().eq('id', id);
+    if (error) notify('Erro: ' + error.message, false);
+    else { notify('Combo excluído!'); load(); }
+  };
+
   const precoIndividual = (tourIds: string[]) =>
     tourIds.reduce((sum, id) => sum + (tours.find(t => t.id === id)?.valor_por_pessoa || 0), 0);
 
@@ -142,6 +149,12 @@ export default function ComboManager() {
                     border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
                   }}>
                     Editar
+                  </button>
+                  <button onClick={() => remove(c.id, c.nome)} style={{
+                    padding: '6px 10px', background: '#FEE2E2', color: '#991B1B',
+                    border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  }}>
+                    Excluir
                   </button>
                 </div>
               </div>

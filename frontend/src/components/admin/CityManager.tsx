@@ -52,6 +52,13 @@ export default function CityManager() {
 
   const cancelEdit = () => { setEditingId(null); setDraft({}); };
 
+  const remove = async (id: string, nome: string) => {
+    if (!confirm(`Excluir cidade "${nome}"? Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from('cities').delete().eq('id', id);
+    if (error) notify('Erro: ' + error.message, false);
+    else { notify('Cidade excluída!'); load(); }
+  };
+
   const save = async (id: string) => {
     setSaving(true);
     const { error } = await supabase.from('cities').update({
@@ -176,9 +183,14 @@ export default function CityManager() {
                     <td style={{ padding: '12px 16px', fontSize: 13, color: '#64748B' }}>{c.description}</td>
                     <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748B' }}>{c.sort_order}</td>
                     <td style={{ padding: '12px 16px' }}>
-                      <button onClick={() => startEdit(c)} style={{ padding: '6px 14px', background: '#EFF6FF', color: '#0D3B8C', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                        Editar
-                      </button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => startEdit(c)} style={{ padding: '6px 14px', background: '#EFF6FF', color: '#0D3B8C', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                          Editar
+                        </button>
+                        <button onClick={() => remove(c.id, c.nome)} style={{ padding: '6px 10px', background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                          Excluir
+                        </button>
+                      </div>
                     </td>
                   </>
                 )}

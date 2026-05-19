@@ -106,6 +106,13 @@ export default function TourManager() {
 
   const close = () => setEditing(null);
 
+  const remove = async (id: string, nome: string) => {
+    if (!confirm(`Excluir passeio "${nome}"? Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from('tours').delete().eq('id', id);
+    if (error) notify('Erro: ' + error.message, false);
+    else { notify('Passeio excluído!'); load(); }
+  };
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !editing) return;
@@ -237,12 +244,20 @@ export default function TourManager() {
                   </button>
                 </td>
                 <td style={{ padding: '12px 16px' }}>
-                  <button onClick={() => openEdit(t)} style={{
-                    padding: '6px 14px', background: '#EFF6FF', color: '#0D3B8C',
-                    border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                  }}>
-                    Editar
-                  </button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => openEdit(t)} style={{
+                      padding: '6px 14px', background: '#EFF6FF', color: '#0D3B8C',
+                      border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    }}>
+                      Editar
+                    </button>
+                    <button onClick={() => remove(t.id, t.nome)} style={{
+                      padding: '6px 10px', background: '#FEE2E2', color: '#991B1B',
+                      border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    }}>
+                      Excluir
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

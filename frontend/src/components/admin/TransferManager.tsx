@@ -76,6 +76,13 @@ export default function TransferManager() {
     setSaving(false);
   };
 
+  const remove = async (id: string, nome: string) => {
+    if (!confirm(`Excluir transfer "${nome}"? Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from('transfers').delete().eq('id', id);
+    if (error) notify('Erro: ' + error.message, false);
+    else { notify('Transfer excluído!'); load(); }
+  };
+
   const fmt = (v: number) => `R$ ${v.toFixed(2)}`;
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#94A3B8' }}>Carregando transfers...</div>;
@@ -122,6 +129,12 @@ export default function TransferManager() {
                   border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
                 }}>
                   Editar
+                </button>
+                <button onClick={() => remove(t.id, t.nome)} style={{
+                  padding: '6px 10px', background: '#FEE2E2', color: '#991B1B',
+                  border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}>
+                  Excluir
                 </button>
               </div>
             </div>

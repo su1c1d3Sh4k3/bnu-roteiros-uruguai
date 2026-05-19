@@ -84,6 +84,14 @@ export default function HotelManager() {
     setSaving(null);
   };
 
+  const remove = async (p: HotelPrice) => {
+    const label = `${cities.find(c => c.id === p.city_id)?.nome || p.city_id} - ${styles.find(s => s.id === p.hotel_style_id)?.label || p.hotel_style_id} (${p.room_type})`;
+    if (!confirm(`Excluir preço "${label}"? Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from('hotel_prices').delete().eq('id', p.id);
+    if (error) notify('Erro: ' + error.message, false);
+    else { notify('Preço excluído!'); load(); }
+  };
+
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#94A3B8' }}>Carregando hoteis...</div>;
 
   return (
@@ -182,9 +190,14 @@ export default function HotelManager() {
                           <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8 }}>{p.season_note}</div>
                         )}
                         {p ? (
-                          <button onClick={() => startEdit(p)} style={{ padding: '5px 12px', background: '#EFF6FF', color: '#0D3B8C', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                            Editar
-                          </button>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => startEdit(p)} style={{ padding: '5px 12px', background: '#EFF6FF', color: '#0D3B8C', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                              Editar
+                            </button>
+                            <button onClick={() => remove(p)} style={{ padding: '5px 8px', background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                              Excluir
+                            </button>
+                          </div>
                         ) : (
                           <div style={{ fontSize: 12, color: '#DC2626', fontStyle: 'italic' }}>Nao disponivel</div>
                         )}
