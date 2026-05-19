@@ -430,18 +430,49 @@ serve(async (req) => {
                   }
                 }
                 transportTransitionDay = bestDay
-                const bestDate = new Date(tripStart.getTime() + bestDay * 86400000)
+                const bestDate = new Date(tripStart!.getTime() + bestDay * 86400000)
                 const bestDateStr = `${String(bestDate.getDate()).padStart(2, "0")}/${String(bestDate.getMonth() + 1).padStart(2, "0")}`
                 const bestDiaSemana = getDiaSemana(bestDate)
                 multiDestWarnings.push(`O City Tour Colonia del Sacramento foi agendado em ${bestDateStr} (${bestDiaSemana}) para coincidir com um dia disponível. As noites foram redistribuídas automaticamente entre Montevideo e Colonia del Sacramento.`)
               } else {
-                // Nenhum dia disponível em MVD — fallback com transfer regular
-                ta.diasPossiveis = []
-                const transDate = new Date(tripStart.getTime() + transportTransitionDay * 86400000)
-                const diaSemana = getDiaSemana(transDate)
-                const dateStr = `${String(transDate.getDate()).padStart(2, "0")}/${String(transDate.getMonth() + 1).padStart(2, "0")}`
-                if (ta.id === "city_col") {
-                  multiDestWarnings.push(`O City Tour Colonia del Sacramento (deslocamento Montevideo → Colonia) acontece apenas às terças, quintas e sábados. Nenhum dia de Montevideo no roteiro coincide com esses dias. Sugerimos ajustar as datas da viagem ou utilizar transfer privativo.`)
+                // Fallback 2: tentar ADIAR a transição — buscar primeiro dia disponível
+                // DEPOIS da transição original que ainda esteja na cidade destino
+                // Isso permite usar um dia (ex: sábado) em COL para o city_col,
+                // movendo noites de COL para MVD (o cliente fica mais tempo em MVD)
+                const t = toursMap[ta.id]
+                const delayDays: number[] = []
+                if (t && tripStart) {
+                  for (let d = transportTransitionDay + 1; d < totalDays - 1; d++) {
+                    // Verificar disponibilidade por dia da semana
+                    const dateD = new Date(tripStart.getTime() + d * 86400000)
+                    const diaD = getDiaSemana(dateD)
+                    if (isDayAvailable(diaD, t.disponibilidade || "todos os dias")) {
+                      delayDays.push(d)
+                    }
+                  }
+                }
+
+                if (delayDays.length > 0) {
+                  const bestDay = delayDays[0] // primeiro dia disponível após transição
+                  ta.diasPossiveis = [bestDay]
+                  // Ajustar citySchedule: mover noites de COL para MVD
+                  // Do transportTransitionDay+1 até bestDay, trocar de COL para MVD
+                  for (let adj = transportTransitionDay + 1; adj <= bestDay; adj++) {
+                    if (citySchedule[adj] === transDestCity) {
+                      citySchedule[adj] = transSourceCity
+                    }
+                  }
+                  transportTransitionDay = bestDay
+                  const bestDate = new Date(tripStart!.getTime() + bestDay * 86400000)
+                  const bestDateStr = `${String(bestDate.getDate()).padStart(2, "0")}/${String(bestDate.getMonth() + 1).padStart(2, "0")}`
+                  const bestDiaSemana = getDiaSemana(bestDate)
+                  multiDestWarnings.push(`O City Tour Colonia del Sacramento foi adiado para ${bestDateStr} (${bestDiaSemana}) para coincidir com um dia disponível. As noites foram redistribuídas automaticamente entre Montevideo e Colonia del Sacramento.`)
+                } else {
+                  // Nenhum dia disponível — fallback com transfer regular
+                  ta.diasPossiveis = []
+                  if (ta.id === "city_col") {
+                    multiDestWarnings.push(`O City Tour Colonia del Sacramento (deslocamento Montevideo → Colonia) acontece apenas às terças, quintas e sábados. Nenhum dia do roteiro coincide com esses dias. Sugerimos ajustar as datas da viagem ou utilizar transfer privativo.`)
+                  }
                 }
               }
             }

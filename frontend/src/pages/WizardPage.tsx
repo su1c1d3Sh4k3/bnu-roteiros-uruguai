@@ -612,6 +612,12 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
       return answers.dias_total || 0;
     })();
 
+    // Substituições equivalentes (ex: city_pde ↔ daytour_pde em 3 cidades)
+    const tourSubstitutes: Record<string, string[]> = {
+      'city_pde': ['city_pde', 'daytour_pde'],
+      'daytour_pde': ['daytour_pde', 'city_pde'],
+    };
+
     // Verificar disponibilidade dos combos: dias suficientes + passeios encaixam nas datas
     const checkComboAvailability = (combo: Combo) => {
       if (tripDays < combo.dias_min) return { available: false, reason: `Requer no minimo ${combo.dias_min} dias (sua viagem tem ${tripDays})` };
@@ -623,7 +629,9 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
         const dias = ['domingo', 'segunda-feira', 'terca-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sabado'];
 
         for (const tourId of combo.tour_ids) {
-          const tour = tours.find(t => t.id === tourId);
+          // Considerar substituto (ex: city_pde → daytour_pde)
+          const subs = tourSubstitutes[tourId] || [tourId];
+          const tour = subs.map(s => tours.find(t => t.id === s)).find(Boolean);
           if (!tour) continue;
           const disp = ((tour as unknown as Record<string, string>).disponibilidade) || 'todos os dias';
           if (disp.toLowerCase().includes('todos os dias')) continue;
@@ -650,7 +658,10 @@ function StepContent({ stepId, answers, setAnswers, cities, tours, hotelStyles, 
     // Detectar combos que coincidem com os passeios já selecionados
     const currentPas = answers.passeios || [];
     const matchingCombos = eligibleCombos.filter(c =>
-      c.tour_ids.every(tid => currentPas.includes(tid))
+      c.tour_ids.every(tid => {
+        const equivalents = tourSubstitutes[tid] || [tid];
+        return equivalents.some(eq => currentPas.includes(eq));
+      })
     );
     // Ordenar: combos que coincidem primeiro
     const sortedCombos = [
