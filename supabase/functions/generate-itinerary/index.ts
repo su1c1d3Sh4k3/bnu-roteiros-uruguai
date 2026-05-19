@@ -1061,7 +1061,9 @@ serve(async (req) => {
         const from = citySchedule[ti - 1]
         const to = citySchedule[ti]
         // Pular se coberto pelo tour de transporte
-        if (transportTourId && (ti - 1) === transportTransitionDay) continue
+        // ti-1 cobre caso sem ajuste (transportTransitionDay = último dia na cidade origem)
+        // ti cobre caso com delay (transportTransitionDay = dia do transport = dia da mudança)
+        if (transportTourId && ((ti - 1) === transportTransitionDay || ti === transportTransitionDay)) continue
         let trId = ""
         if ((from === "mvd" && to === "pde") || (from === "pde" && to === "mvd")) trId = "mvd_punta"
         else if ((from === "mvd" && to === "col") || (from === "col" && to === "mvd")) trId = "mvd_colonia"
