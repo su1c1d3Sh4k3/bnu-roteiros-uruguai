@@ -374,10 +374,13 @@ serve(async (req) => {
             if (!isDayAvailable(diaSemana, t.disponibilidade || "todos os dias")) continue
           }
 
-          // PONTO 5: Em dias de mudança de cidade (transfer), só permitir Noturno
-          // EXCETO se este tour é o tour de transporte designado (city_col/city_pde)
+          // PONTO 5: Em dias de mudança de cidade (transfer):
+          // - "Dia Todo" bloqueado (ocupa o dia inteiro, incompatível com transfer)
+          // - "Diurno" (meio período) permitido (pode ser feito na parte livre do dia)
+          // - "Noturno" permitido
+          // - Tour de transporte sempre permitido
           const isCityChangeDay = i > 0 && citySchedule[i] !== citySchedule[i - 1]
-          if (isCityChangeDay && tipo !== "Noturno" && !isTransportTour) continue
+          if (isCityChangeDay && tipo === "Dia Todo" && !isTransportTour) continue
 
           diasPossiveis.push(i)
         }
@@ -497,8 +500,8 @@ serve(async (req) => {
         ta.diasPossiveis = ta.diasPossiveis.filter(d => {
           const cityOnDay = citySchedule[d] || ""
           if (cityOnDay !== t.cidade_base) return false
-          // Revalidar regra Ponto 5: sem diurno em dia de mudança de cidade
-          if (d > 0 && citySchedule[d] !== citySchedule[d - 1] && tipo !== "Noturno") return false
+          // Revalidar regra Ponto 5: sem "Dia Todo" em dia de mudança de cidade
+          if (d > 0 && citySchedule[d] !== citySchedule[d - 1] && tipo === "Dia Todo") return false
           return true
         })
       }
