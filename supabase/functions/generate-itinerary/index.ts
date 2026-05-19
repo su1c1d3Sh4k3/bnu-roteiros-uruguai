@@ -442,10 +442,11 @@ serve(async (req) => {
               const advanceDays = ta.diasPossiveis.filter(d => d <= transportTransitionDay && citySchedule[d] === transSourceCity)
 
               if (delayDays.length > 0) {
-                // ADIAR — mover noites de COL para MVD
+                // ADIAR — mover noites entre transição original e novo dia para MVD
+                // NÃO incluir bestDay: nesse dia o cliente viaja e dorme em COL
                 const bestDay = delayDays[0]
                 ta.diasPossiveis = [bestDay]
-                for (let adj = transportTransitionDay + 1; adj <= bestDay; adj++) {
+                for (let adj = transportTransitionDay + 1; adj < bestDay; adj++) {
                   if (citySchedule[adj] === transDestCity) {
                     citySchedule[adj] = transSourceCity
                   }
