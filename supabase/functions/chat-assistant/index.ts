@@ -105,14 +105,17 @@ serve(async (req) => {
       )
     }
 
-    // --- Fetch itinerary + answers + messages + tours + transfers ---
-    const [itinRes, answersRes, messagesRes, toursRes, transfersRes, citiesRes] = await Promise.all([
+    // --- Fetch itinerary + answers + messages + tours + transfers + combos + hotels + seasonal ---
+    const [itinRes, answersRes, messagesRes, toursRes, transfersRes, citiesRes, combosRes, hotelPricesRes, seasonalRes] = await Promise.all([
       supabase.from("itineraries").select("id, generated_result").eq("id", itinerary_id).eq("user_id", userId).single(),
       supabase.from("itinerary_answers").select("nome, email, perfil, adultos, criancas, data_ida, data_volta, dias_total, datas_definidas, cidades, hotel_estrelas, hotel_opcao, hotel_nome, hotel_quartos, passeios, ocasiao_especial, ocasiao_detalhe, ocasiao_data, orcamento, extras, combo_id").eq("itinerary_id", itinerary_id).single(),
       supabase.from("chat_messages").select("role, content").eq("itinerary_id", itinerary_id).order("created_at", { ascending: true }),
-      supabase.from("tours").select("id, nome, valor_por_pessoa, cidade_base, duration, link_url, tipo_passeio, disponibilidade, horario_saida, horario_retorno, emoji").eq("ativo", true).order("sort_order"),
+      supabase.from("tours").select("id, nome, valor_por_pessoa, cidade_base, duration, link_url, tipo_passeio, disponibilidade, horario_saida, horario_retorno, emoji, private_pricing").eq("ativo", true).order("sort_order"),
       supabase.from("transfers").select("id, nome, price_1_2, price_3_6, price_7_11, price_12_15").eq("ativo", true),
       supabase.from("cities").select("id, nome, emoji").order("sort_order"),
+      supabase.from("combos").select("id, nome, emoji, description, tour_ids, preco_combo, dias_min").eq("ativo", true).order("sort_order"),
+      supabase.from("hotel_prices").select("city_id, hotel_style_id, room_type, price_per_night, season_note"),
+      supabase.from("seasonal_rules").select("name, months, adjustment_type, adjustment_value, city_ids").eq("ativo", true),
     ])
 
     const itinerary = itinRes.data
@@ -128,6 +131,9 @@ serve(async (req) => {
     const allTours = toursRes.data || []
     const allTransfers = transfersRes.data || []
     const allCities = citiesRes.data || []
+    const allCombos = combosRes.data || []
+    const allHotelPrices = hotelPricesRes.data || []
+    const allSeasonalRules = seasonalRes.data || []
 
     // Build maps
     const toursMap: Record<string, typeof allTours[0]> = {}
@@ -215,24 +221,30 @@ Informacoes adicionais: ${answers.extras || "nenhuma"}\n`
       }
     }
 
-    // Catalogo completo de passeios e transfers
+    // Catalogo completo de passeios
     itineraryContext += `\n═══════════════════════════════════════
 CATALOGO COMPLETO DE PASSEIOS DISPONIVEIS
 ═══════════════════════════════════════\n`
-    itineraryContext += allTours.map(t =>
-      `- ${t.nome} (ID: ${t.id}) | R$${t.valor_por_pessoa}/pessoa | Tipo: ${t.tipo_passeio || "Diurno"} | Cidade: ${citiesMap[t.cidade_base] || t.cidade_base} | Duracao: ${t.duration || "N/A"} | Saida: ${t.horario_saida || "N/A"} - ${t.horario_retorno || "N/A"} | Disponibilidade: ${t.disponibilidade || "todos os dias"} | ${t.link_url || ""}`
+    itineraryContext += allTours.map((t: Record<string, unknown>) =>
+      `- ${t.nome} (ID: ${t.id}) | R$${t.valor_por_pessoa}/pessoa | Tipo: ${t.tipo_passeio || "Diurno"} | Cidade: ${citiesMap[t.cidade_base as string] || t.cidade_base} | Duracao: ${t.duration || "N/A"} | Saida: ${t.horario_saida || "N/A"} - ${t.horario_retorno || "N/A"} | Disponibilidade: ${t.disponibilidade || "todos os dias"} | ${t.link_url || ""}`
     ).join("\n")
 
-    itineraryContext += `\n\n═══════════════════════════════════════
+    // Passeios privativos (do banco, campo private_pricing)
+    const privateTours = allTours.filter((t: Record<string, unknown>) => t.private_pricing && Object.keys(t.private_pricing as Record<string, unknown>).length > 0)
+    if (privateTours.length > 0) {
+      itineraryContext += `\n\n═══════════════════════════════════════
 PASSEIOS PRIVATIVOS (valor total do grupo, NAO por pessoa)
-═══════════════════════════════════════
-- City Tour Montevideo Privativo: 1-3 pax=R$1.650 | 4-9 pax=R$2.600 | 10-12 pax=R$3.040 | 12-15 pax=R$3.380
-- City Tour Punta del Este Privativo: 1-3 pax=R$3.850 | 4-9 pax=R$4.950 | 10-12 pax=R$5.650 | 12-15 pax=R$6.850
-- City Tour Colonia del Sacramento Privativo: 1-3 pax=R$4.750 | 4-9 pax=R$5.850 | 10-12 pax=R$6.850 | 12-15 pax=R$7.350
-(Demais passeios privativos: valor sob consulta)
-`
+═══════════════════════════════════════\n`
+      itineraryContext += privateTours.map((t: Record<string, unknown>) => {
+        const pp = (t.private_pricing || {}) as Record<string, number>
+        const faixas = Object.entries(pp).filter(([, v]) => v > 0).map(([k, v]) => `${k} pax=R$${v}`).join(" | ")
+        return `- ${t.nome} Privativo: ${faixas}`
+      }).join("\n")
+      itineraryContext += "\n(Demais passeios privativos: valor sob consulta)"
+    }
 
-    itineraryContext += `\n═══════════════════════════════════════
+    // Catalogo de transfers
+    itineraryContext += `\n\n═══════════════════════════════════════
 CATALOGO DE TRANSFERS
 ═══════════════════════════════════════\n`
     itineraryContext += allTransfers.map(t => {
@@ -243,6 +255,61 @@ CATALOGO DE TRANSFERS
       if (Number(t.price_12_15) > 0) prices.push(`12-15 pax: R$${t.price_12_15}`)
       return `- ${t.nome} (ID: ${t.id}): ${prices.join(" | ")}`
     }).join("\n")
+
+    // Combos (do banco)
+    if (allCombos.length > 0) {
+      itineraryContext += `\n\n═══════════════════════════════════════
+COMBOS COM DESCONTO (do banco)
+═══════════════════════════════════════\n`
+      itineraryContext += allCombos.map((c: Record<string, unknown>) => {
+        const tourIds = (c.tour_ids || []) as string[]
+        const tourNames = tourIds.map(id => toursMap[id]?.nome || id).join(" + ")
+        const somaIndividual = tourIds.reduce((s: number, id: string) => s + (toursMap[id]?.valor_por_pessoa || 0), 0)
+        return `- ${c.emoji} ${c.nome} (ID: ${c.id}): R$${c.preco_combo}/pessoa | Inclui: ${tourNames} | Individual: R$${somaIndividual} | Min ${c.dias_min} dias`
+      }).join("\n")
+      if (answers?.combo_id) {
+        const selectedCombo = allCombos.find((c: Record<string, unknown>) => c.id === answers.combo_id)
+        if (selectedCombo) {
+          itineraryContext += `\n\nCombo selecionado pelo cliente: ${selectedCombo.nome} (R$${selectedCombo.preco_combo}/pessoa)`
+        }
+      }
+    }
+
+    // Precos de hotel (do banco)
+    if (allHotelPrices.length > 0) {
+      itineraryContext += `\n\n═══════════════════════════════════════
+PRECOS DE HOTEL (do banco, por pessoa/noite)
+═══════════════════════════════════════\n`
+      const hotelStyleNames: Record<string, string> = { "3": "3 estrelas", "4": "4 estrelas", "5": "5 estrelas" }
+      const roomTypeNames: Record<string, string> = { individual: "Individual", duplo: "Duplo", triplo: "Triplo" }
+      const grouped: Record<string, string[]> = {}
+      for (const hp of allHotelPrices) {
+        const city = citiesMap[hp.city_id as string] || hp.city_id
+        const style = hotelStyleNames[hp.hotel_style_id as string] || hp.hotel_style_id
+        const room = roomTypeNames[hp.room_type as string] || hp.room_type
+        const key = `${city} ${style}`
+        if (!grouped[key]) grouped[key] = []
+        grouped[key].push(`${room}: R$${hp.price_per_night}/noite`)
+      }
+      for (const [key, rooms] of Object.entries(grouped)) {
+        itineraryContext += `- ${key}: ${rooms.join(" | ")}\n`
+      }
+    }
+
+    // Regras de sazonalidade
+    if (allSeasonalRules.length > 0) {
+      itineraryContext += `\n═══════════════════════════════════════
+REGRAS DE SAZONALIDADE (ativas)
+═══════════════════════════════════════\n`
+      itineraryContext += allSeasonalRules.map((r: Record<string, unknown>) => {
+        const months = (r.months || []) as number[]
+        const monthNames = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+        const monthStr = months.map(m => monthNames[m - 1] || m).join(", ")
+        const cityIds = (r.city_ids || []) as string[]
+        const cityStr = cityIds.length > 0 ? cityIds.map(id => citiesMap[id] || id).join(", ") : "todas"
+        return `- ${r.name}: ${r.adjustment_type === "percent" ? `+${r.adjustment_value}%` : `+R$${r.adjustment_value}`} | Meses: ${monthStr} | Cidades: ${cityStr}`
+      }).join("\n")
+    }
 
     if (itinerary.generated_result) {
       itineraryContext += `\n\n═══════════════════════════════════════
@@ -324,8 +391,14 @@ ${itineraryRules}
 - NUNCA remova itens que o cliente nao pediu para remover.
 - Passeios "Dia Todo" ocupam o dia inteiro — nao combine com diurnos.
 - Passeios Noturnos podem ser combinados com Diurnos no mesmo dia.
-- Em dias de mudanca de cidade, apenas passeios Noturnos.
+- Em dias de mudanca de cidade (transfer), apenas passeios Noturnos.
 - Van compartilhada: APENAS para 1 pessoa, APENAS trecho Aeroporto MVD <-> Hotel MVD.
+- City Tour Colonia e City Tour Punta del Este servem como TRANSPORTE entre cidades (mais barato que transfer privativo).
+- O tour de transporte deve estar no PRIMEIRO dia da cidade destino (dia do checkin), NAO no ultimo dia da cidade origem.
+- 3 cidades: ordem PDE → MVD → COL. City Tour Colonia = transporte MVD → COL.
+- 2 cidades MVD+PDE: ordem MVD → PDE. City Tour Punta = transporte MVD → PDE.
+- 2 cidades MVD+COL: ordem MVD → COL. City Tour Colonia = transporte MVD → COL.
+- NUNCA mover o tour de transporte para um dia diferente sem recalcular todo o roteiro.
 
 ═══════════════════════════════════════
 FORMATO DE SAIDA
