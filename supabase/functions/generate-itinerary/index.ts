@@ -186,6 +186,7 @@ serve(async (req) => {
     const selectedCityIds = Object.keys(cidadesObj)
     const hasThreeCities = selectedCityIds.includes("mvd") && selectedCityIds.includes("pde") && selectedCityIds.includes("col")
     const hasMvdPde = selectedCityIds.includes("mvd") && selectedCityIds.includes("pde") && !selectedCityIds.includes("col")
+    const hasMvdCol = selectedCityIds.includes("mvd") && selectedCityIds.includes("col") && !selectedCityIds.includes("pde")
     const multiDestWarnings: string[] = []
 
     if (hasThreeCities) {
@@ -203,6 +204,15 @@ serve(async (req) => {
       const reordered: Record<string, number> = {}
       reordered["mvd"] = cidadesObj["mvd"]
       reordered["pde"] = cidadesObj["pde"]
+      for (const [k, v] of Object.entries(cidadesObj)) {
+        if (!(k in reordered)) reordered[k] = v as number
+      }
+      cidadesObj = reordered
+    } else if (hasMvdCol) {
+      // 2 cidades MVD+COL: ordem obrigatória Montevideo → Colonia
+      const reordered: Record<string, number> = {}
+      reordered["mvd"] = cidadesObj["mvd"]
+      reordered["col"] = cidadesObj["col"]
       for (const [k, v] of Object.entries(cidadesObj)) {
         if (!(k in reordered)) reordered[k] = v as number
       }
@@ -296,6 +306,12 @@ serve(async (req) => {
         passeiosIds.push("city_pde")
         multiDestWarnings.push("O City Tour Punta del Este foi adicionado ao roteiro como meio de deslocamento de Montevideo para Punta del Este (mais econômico que transfer privativo).")
       }
+    } else if (hasMvdCol) {
+      // Garantir City Tour Colonia como transporte MVD → COL
+      if (!passeiosIds.includes("city_col")) {
+        passeiosIds.push("city_col")
+        multiDestWarnings.push("O City Tour Colonia del Sacramento foi adicionado ao roteiro como meio de deslocamento de Montevideo para Colonia del Sacramento (mais econômico que transfer privativo).")
+      }
     }
 
     // PONTO 7: Day Tour PDE só se PDE é a primeira cidade (chegada direta)
@@ -345,8 +361,8 @@ serve(async (req) => {
     let transportTourId: string | null = null
     let transportTransitionDay = -1
 
-    if ((hasThreeCities || hasMvdPde) && totalDays > 0) {
-      transportTourId = hasThreeCities ? "city_col" : "city_pde"
+    if ((hasThreeCities || hasMvdPde || hasMvdCol) && totalDays > 0) {
+      transportTourId = hasMvdPde ? "city_pde" : "city_col"
     }
 
     const tourAllocations: TourAllocation[] = []
@@ -400,9 +416,9 @@ serve(async (req) => {
     }
 
     // ═══════ RESTRINGIR TOUR DE TRANSPORTE AO DIA DE TRANSIÇÃO ═══════
-    if ((hasThreeCities || hasMvdPde) && totalDays > 0) {
+    if ((hasThreeCities || hasMvdPde || hasMvdCol) && totalDays > 0) {
       const transSourceCity = "mvd"
-      const transDestCity = hasThreeCities ? "col" : "pde"
+      const transDestCity = hasMvdPde ? "pde" : "col"
 
       // Encontrar o último dia na cidade de origem antes da cidade de destino
       for (let i = 1; i < citySchedule.length; i++) {
@@ -846,7 +862,7 @@ serve(async (req) => {
         }
 
         // PONTO 1: Van compartilhada só para 1 pessoa no trecho Aeroporto MVD ↔ Hotel MVD
-        const isAirportMvdTransfer = (isArrival && !(hasThreeCities && cityOnDay === "pde")) || (isDeparture && !((hasThreeCities && cityOnDay === "col") || (hasMvdPde && cityOnDay === "pde")))
+        const isAirportMvdTransfer = (isArrival && !(hasThreeCities && cityOnDay === "pde")) || (isDeparture && !((hasThreeCities && cityOnDay === "col") || (hasMvdPde && cityOnDay === "pde") || (hasMvdCol && cityOnDay === "col")))
         const transferLabel = (total === 1 && isAirportMvdTransfer) ? "Van compartilhada" : "Transfer"
 
         if (isArrival) {
@@ -872,7 +888,7 @@ serve(async (req) => {
         } else if (isDeparture) {
           // Departure: handle non-MVD last city
           preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel${cityOnDay !== "mvd" ? " em " + cityName : ""}`)
-          if ((hasThreeCities && cityOnDay === "col") || (hasMvdPde && cityOnDay === "pde")) {
+          if ((hasThreeCities && cityOnDay === "col") || (hasMvdPde && cityOnDay === "pde") || (hasMvdCol && cityOnDay === "col")) {
             preRoteiro.push(`- \uD83D\uDE97 Transfer ${cityName} \u2192 Aeroporto de Montevideo`)
           } else {
             preRoteiro.push(`- \uD83D\uDE97 ${transferLabel} hotel \u2192 aeroporto`)
