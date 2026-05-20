@@ -357,12 +357,24 @@ serve(async (req) => {
       diasPossiveis: number[] // day indices (0-based)
     }
 
-    // ═══════ IDENTIFICAR TOUR DE TRANSPORTE ═══════
+    // ═══════ IDENTIFICAR TOUR DE TRANSPORTE E DIA DE TRANSIÇÃO ═══════
     let transportTourId: string | null = null
+    // transportTransitionDay = primeiro dia na cidade DESTINO (dia do checkin)
+    // O tour de transporte acontece NESTE dia: cliente faz checkout da origem de manhã,
+    // faz o city tour (que inclui deslocamento), e faz checkin no destino à noite
     let transportTransitionDay = -1
 
     if ((hasThreeCities || hasMvdPde || hasMvdCol) && totalDays > 0) {
       transportTourId = hasMvdPde ? "city_pde" : "city_col"
+      const transSourceCity = "mvd"
+      const transDestCity = hasMvdPde ? "pde" : "col"
+      // Encontrar o primeiro dia na cidade destino
+      for (let i = 1; i < citySchedule.length; i++) {
+        if (citySchedule[i - 1] === transSourceCity && citySchedule[i] === transDestCity) {
+          transportTransitionDay = i
+          break
+        }
+      }
     }
 
     const tourAllocations: TourAllocation[] = []
@@ -381,7 +393,14 @@ serve(async (req) => {
 
           if (isDeparture) continue
           if (isArrival && tipo !== "Noturno") continue
-          if (cityOnDay !== t.cidade_base) continue
+
+          // O tour de transporte PARTE da cidade origem mas está agendado no dia da
+          // cidade destino. Permitir exceção no check de cidade_base.
+          if (isTransportTour && i === transportTransitionDay) {
+            // Transport tour no dia de transição: permitir independente da cidade_base
+          } else if (cityOnDay !== t.cidade_base) {
+            continue
+          }
 
           // Só filtrar por dia da semana se temos datas reais
           if (tripStart) {
@@ -391,7 +410,6 @@ serve(async (req) => {
           }
 
           // PONTO 5: Em dias de mudança de cidade (transfer), só permitir Noturno
-          // O cliente está em trânsito durante o dia — não dá tempo para tour diurno
           // EXCETO o tour de transporte designado (city_col/city_pde) que É o deslocamento
           const isCityChangeDay = i > 0 && citySchedule[i] !== citySchedule[i - 1]
           if (isCityChangeDay && tipo !== "Noturno" && !isTransportTour) continue
@@ -420,16 +438,8 @@ serve(async (req) => {
       const transSourceCity = "mvd"
       const transDestCity = hasMvdPde ? "pde" : "col"
 
-      // Encontrar o último dia na cidade de origem antes da cidade de destino
-      for (let i = 1; i < citySchedule.length; i++) {
-        if (citySchedule[i - 1] === transSourceCity && citySchedule[i] === transDestCity) {
-          transportTransitionDay = i - 1
-          break
-        }
-      }
-
       // Restringir diasPossiveis do tour de transporte ao dia de transição
-      // Ordem de prioridade: dia exato → adiar (manter noites em MVD) → adiantar → transfer
+      // Ordem de prioridade: dia exato → adiar → adiantar → transfer
       if (transportTransitionDay >= 0) {
         for (const ta of tourAllocations) {
           if (ta.id === transportTourId) {
@@ -441,7 +451,6 @@ serve(async (req) => {
             } else {
               // Dia exato não disponível — buscar alternativas
               // 2) ADIAR: buscar primeiro dia disponível DEPOIS da transição
-              //    Preferível pois mantém as noites em MVD como o cliente pediu
               const t = toursMap[ta.id]
               const delayDays: number[] = []
               if (t && tripStart) {
@@ -454,15 +463,11 @@ serve(async (req) => {
                 }
               }
 
-              // 3) ADIANTAR: buscar último dia disponível em MVD ANTES da transição
-              const advanceDays = ta.diasPossiveis.filter(d => d <= transportTransitionDay && citySchedule[d] === transSourceCity)
-
               if (delayDays.length > 0) {
-                // ADIAR — mover noites entre transição original e novo dia para MVD
-                // NÃO incluir bestDay: nesse dia o cliente viaja e dorme em COL
+                // 2) ADIAR — mover noites entre transição e novo dia para MVD
                 const bestDay = delayDays[0]
                 ta.diasPossiveis = [bestDay]
-                for (let adj = transportTransitionDay + 1; adj < bestDay; adj++) {
+                for (let adj = transportTransitionDay; adj < bestDay; adj++) {
                   if (citySchedule[adj] === transDestCity) {
                     citySchedule[adj] = transSourceCity
                   }
@@ -472,20 +477,6 @@ serve(async (req) => {
                 const bestDateStr = `${String(bestDate.getDate()).padStart(2, "0")}/${String(bestDate.getMonth() + 1).padStart(2, "0")}`
                 const bestDiaSemana = getDiaSemana(bestDate)
                 multiDestWarnings.push(`O City Tour Colonia del Sacramento foi adiado para ${bestDateStr} (${bestDiaSemana}) para coincidir com um dia disponível. As noites foram redistribuídas automaticamente entre Montevideo e Colonia del Sacramento.`)
-              } else if (advanceDays.length > 0) {
-                // ADIANTAR — mover noites de MVD para COL
-                const bestDay = advanceDays[advanceDays.length - 1]
-                ta.diasPossiveis = [bestDay]
-                for (let adj = bestDay + 1; adj <= transportTransitionDay; adj++) {
-                  if (citySchedule[adj] === transSourceCity) {
-                    citySchedule[adj] = transDestCity
-                  }
-                }
-                transportTransitionDay = bestDay
-                const bestDate = new Date(tripStart!.getTime() + bestDay * 86400000)
-                const bestDateStr = `${String(bestDate.getDate()).padStart(2, "0")}/${String(bestDate.getMonth() + 1).padStart(2, "0")}`
-                const bestDiaSemana = getDiaSemana(bestDate)
-                multiDestWarnings.push(`O City Tour Colonia del Sacramento foi adiantado para ${bestDateStr} (${bestDiaSemana}) para coincidir com um dia disponível. As noites foram redistribuídas automaticamente entre Montevideo e Colonia del Sacramento.`)
               } else {
                 // 4) Nenhum dia disponível — fallback com transfer regular
                 ta.diasPossiveis = []
@@ -832,16 +823,17 @@ serve(async (req) => {
         const cityChanged = cityOnDay !== prevCity
 
         // Detect transport tour on this day
-        const nextCity = (i + 1 < totalDays) ? citySchedule[i + 1] : null
+        // O transport está no primeiro dia da cidade destino (cityChanged = true)
+        // O cliente faz checkout da origem e checkin no destino neste dia
         const isTransportTourDay = transportTourId !== null && assigned.some(name => {
           const ta = tourAllocations.find(t => t.nome === name)
           return ta && ta.id === transportTourId
-        }) && nextCity && nextCity !== cityOnDay
-        const transportDestCityName = isTransportTourDay ? (citiesMap[nextCity!] || nextCity) : null
+        }) && cityChanged
+        const transportDestCityName = isTransportTourDay ? cityName : null
 
         // Detect failed transport (tour expected but not allocated — need fallback transfer)
         const isFailedTransportDay = !isTransportTourDay && i === transportTransitionDay &&
-          transportTourId !== null && nextCity !== null && nextCity !== cityOnDay
+          transportTourId !== null && cityChanged
 
         // Suppress city change if yesterday had transport (successful or fallback)
         const suppressCityChange = cityChanged && prevWasTransportTour
@@ -911,11 +903,6 @@ serve(async (req) => {
             preRoteiro.push(`- \uD83C\uDFE8 Check-in no hotel em ${cityName}`)
           }
 
-          // ── Transport tour day: check-out from current city ──
-          if (isTransportTourDay && !cityChanged) {
-            preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel em ${cityName}`)
-          }
-
           // ── Tours ──
           if (assigned.length > 0) {
             for (const tourName of assigned) {
@@ -931,18 +918,10 @@ serve(async (req) => {
             preRoteiro.push(`- \uD83C\uDF19 Dia livre`)
           }
 
-          // ── Transport tour: check-in to destination ──
-          if (isTransportTourDay) {
-            preRoteiro.push(`- \uD83C\uDFE8 Check-in no hotel em ${transportDestCityName}`)
-          }
-
           // ── Fallback: transport tour failed, add regular transfer ──
-          if (isFailedTransportDay) {
-            const destCityName = citiesMap[nextCity!] || nextCity
-            preRoteiro.push(`- \uD83E\uDDF3 Check-out do hotel em ${cityName}`)
-            preRoteiro.push(`- \uD83D\uDE97 Transfer ${cityName} \u2192 ${destCityName}`)
-            preRoteiro.push(`- \uD83C\uDFE8 Check-in no hotel em ${destCityName}`)
-          }
+          // (o city change block acima já cuida do checkout/checkin,
+          //  mas se o transport falhou E o city change já mostrou transfer regular, OK)
+          // Nada extra necessário — o bloco cityChanged já trata fallback com transfer
         }
 
         preRoteiro.push("")
@@ -1077,9 +1056,8 @@ serve(async (req) => {
         const from = citySchedule[ti - 1]
         const to = citySchedule[ti]
         // Pular se coberto pelo tour de transporte
-        // ti-1 cobre caso sem ajuste (transportTransitionDay = último dia na cidade origem)
-        // ti cobre caso com delay (transportTransitionDay = dia do transport = dia da mudança)
-        if (transportTourId && ((ti - 1) === transportTransitionDay || ti === transportTransitionDay)) continue
+        // transportTransitionDay = primeiro dia na cidade destino = dia do transport
+        if (transportTourId && ti === transportTransitionDay) continue
         let trId = ""
         if ((from === "mvd" && to === "pde") || (from === "pde" && to === "mvd")) trId = "mvd_punta"
         else if ((from === "mvd" && to === "col") || (from === "col" && to === "mvd")) trId = "mvd_colonia"
