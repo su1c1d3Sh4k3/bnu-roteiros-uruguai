@@ -38,6 +38,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginInProgress = useRef(false);
   const mounted = useRef(true);
 
+  // Creates an anonymous session so the app works without any login screen
+  const signInAnon = async () => {
+    try {
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (!mounted.current) return;
+      if (!error && data.session) setSession(data.session);
+    } catch {
+      // network failure — ProtectedRoute keeps showing loading/retry UI
+    } finally {
+      if (mounted.current) setLoading(false);
+    }
+  };
+
   useEffect(() => {
     mounted.current = true;
 
@@ -48,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('[Auth] getSession() timeout — clearing session and unblocking');
         supabase.auth.signOut({ scope: 'local' }).catch(() => {});
         setSession(null);
-        setLoading(false);
+        signInAnon();
       }
     }, 4000);
 
@@ -57,23 +70,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearTimeout(sessionTimer);
         if (!mounted.current) return;
 
+        if (!s) {
+          // No session yet — create an anonymous one automatically
+          signInAnon();
+          return;
+        }
+
         setSession(s);
         setLoading(false); // ← unblock routing immediately
 
         // Load profile in background — never blocks loading
-        if (s?.user) {
-          fetchProfile(s.user.id).then(profile => {
-            if (!mounted.current || !profile) return;
-            setUserNome(profile.nome ?? '');
-            setIsAdmin(profile.is_admin ?? false);
-          });
-        }
+        fetchProfile(s.user.id).then(profile => {
+          if (!mounted.current || !profile) return;
+          setUserNome(profile.nome ?? '');
+          setIsAdmin(profile.is_admin ?? false);
+        });
       })
       .catch(() => {
         clearTimeout(sessionTimer);
         if (!mounted.current) return;
         setSession(null);
-        setLoading(false);
+        signInAnon();
       });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
@@ -162,6 +179,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setUserNome('');
     setIsAdmin(false);
+    // Recreate an anonymous session so the public app keeps working
+    await signInAnon();
   };
 
   return (

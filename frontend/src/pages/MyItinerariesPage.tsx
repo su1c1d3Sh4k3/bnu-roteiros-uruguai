@@ -25,44 +25,74 @@ const STATUS_CONFIG = {
 
 export default function MyItinerariesPage() {
   const navigate = useNavigate();
-  const { user, userNome, logout } = useAuth();
+  const { user, userNome } = useAuth();
   const [itineraries, setItineraries] = useState<ItineraryWithAnswers[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [searchContact, setSearchContact] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchMessage, setSearchMessage] = useState('');
+
+  const loadItineraries = async (userId: string) => {
+    try {
+      const { data } = await supabase
+        .from('itineraries')
+        .select(`
+          id,
+          status,
+          created_at,
+          updated_at,
+          itinerary_answers (
+            nome,
+            cidades,
+            data_ida,
+            data_volta,
+            current_step
+          )
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (data) {
+        setItineraries(data as unknown as ItineraryWithAnswers[]);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar roteiros:', err);
+    }
+  };
 
   useEffect(() => {
-    const loadItineraries = async () => {
-      if (!user) return;
-      setLoading(true);
-      try {
-        const { data } = await supabase
-          .from('itineraries')
-          .select(`
-            id,
-            status,
-            created_at,
-            updated_at,
-            itinerary_answers (
-              nome,
-              cidades,
-              data_ida,
-              data_volta,
-              current_step
-            )
-          `)
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (data) {
-          setItineraries(data as unknown as ItineraryWithAnswers[]);
-        }
-      } catch (err) {
-        console.error('Erro ao carregar roteiros:', err);
-      }
-      setLoading(false);
-    };
-    loadItineraries();
+    if (!user) return;
+    setLoading(true);
+    loadItineraries(user.id).finally(() => setLoading(false));
   }, [user]);
+
+  // Busca roteiros criados em outro navegador/aparelho pelo e-mail ou
+  // telefone informado na etapa 1 do wizard (os roteiros encontrados
+  // passam a pertencer à sessão atual)
+  const handleSearch = async () => {
+    const contact = searchContact.trim();
+    if (!user || searching || !contact) return;
+    setSearching(true);
+    setSearchMessage('');
+    try {
+      const { data, error } = await supabase.rpc('claim_itineraries_by_contact', {
+        p_contact: contact,
+      });
+      if (error) throw error;
+      const found = (data as string[] | null)?.length ?? 0;
+      if (found > 0) {
+        setSearchMessage(`${found} roteiro${found > 1 ? 's' : ''} encontrado${found > 1 ? 's' : ''}!`);
+        await loadItineraries(user.id);
+      } else {
+        setSearchMessage('Nenhum roteiro encontrado com esse e-mail ou telefone.');
+      }
+    } catch (err) {
+      console.error('Erro ao buscar roteiros:', err);
+      setSearchMessage('Erro ao buscar. Tente novamente.');
+    }
+    setSearching(false);
+  };
 
   const handleNewItinerary = async () => {
     if (!user || creating) return;
@@ -135,18 +165,56 @@ export default function MyItinerariesPage() {
             }}>
               Início
             </Link>
-            <button onClick={logout} style={{
-              background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-              color: 'white', padding: '6px 14px', borderRadius: 8, cursor: 'pointer',
-              fontSize: 13, fontWeight: 600,
-            }}>
-              Sair
-            </button>
           </div>
         </div>
       </div>
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '24px 20px' }}>
+        {/* Search itineraries by contact */}
+        <div style={{
+          background: 'white', border: '1px solid #E2E8F0', borderRadius: 16,
+          padding: '18px 20px', marginBottom: 16,
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', marginBottom: 4 }}>
+            Já criou um roteiro antes?
+          </div>
+          <div style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>
+            Busque pelo e-mail ou telefone informado no cadastro do roteiro.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={searchContact}
+              onChange={e => { setSearchContact(e.target.value); setSearchMessage(''); }}
+              onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
+              placeholder="seu@email.com ou (11) 99999-9999"
+              style={{
+                flex: 1, padding: '10px 14px', borderRadius: 10,
+                border: '1px solid #CBD5E1', fontSize: 14, outline: 'none',
+              }}
+            />
+            <button
+              onClick={handleSearch}
+              disabled={searching || !searchContact.trim()}
+              style={{
+                background: 'linear-gradient(135deg, #0D3B8C, #1B6E3C)', color: 'white',
+                border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 14,
+                fontWeight: 700, cursor: searching || !searchContact.trim() ? 'not-allowed' : 'pointer',
+                opacity: searching || !searchContact.trim() ? 0.6 : 1, whiteSpace: 'nowrap',
+              }}
+            >
+              {searching ? 'Buscando...' : 'Buscar'}
+            </button>
+          </div>
+          {searchMessage && (
+            <div style={{
+              marginTop: 10, fontSize: 13, fontWeight: 600,
+              color: searchMessage.includes('encontrado!') || searchMessage.includes('encontrados!') ? '#1B6E3C' : '#B45309',
+            }}>
+              {searchMessage}
+            </div>
+          )}
+        </div>
+
         {/* New itinerary button */}
         <button
           onClick={handleNewItinerary}

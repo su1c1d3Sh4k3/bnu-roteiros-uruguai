@@ -6,7 +6,7 @@ import faviconSrc from '../assets/favicon.png';
 
 export default function WelcomePage() {
   const navigate = useNavigate();
-  const { user, userNome, logout } = useAuth();
+  const { user, userNome } = useAuth();
   const [creating, setCreating] = useState(false);
 
   const handleStart = async () => {
@@ -62,13 +62,6 @@ export default function WelcomePage() {
             }}>
               Meus Roteiros
             </Link>
-            <button onClick={logout} style={{
-              background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-              color: 'white', padding: '6px 14px', borderRadius: 8, cursor: 'pointer',
-              fontSize: 13, fontWeight: 600,
-            }}>
-              Sair
-            </button>
           </div>
         </div>
 

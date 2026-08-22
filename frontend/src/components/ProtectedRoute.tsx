@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
   const [showReset, setShowReset] = useState(false);
 
+  // Session is created automatically (anonymous sign-in) — no login screen.
+  const waiting = loading || !session;
+
   useEffect(() => {
-    if (!loading) return;
+    if (!waiting) return;
     const t = setTimeout(() => setShowReset(true), 6000);
     return () => clearTimeout(t);
-  }, [loading]);
+  }, [waiting]);
 
-  if (loading) {
+  if (waiting) {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -55,6 +57,5 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     );
   }
 
-  if (!session) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
