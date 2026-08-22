@@ -6,10 +6,12 @@ This file provides guidance to Claude Code (claude.com/claude-code) when working
 
 Trip planner for "Brasileiros no Uruguai" (BNU), a tourism agency. Users build Uruguay itineraries via a wizard, get AI-generated plans, and chat with "Rodrigo" (AI assistant). Includes a full admin panel (`/admin`) for managing tours, cities, hotels, transfers, combos, and the AI prompt/documents.
 
+**No user login**: visitors get an automatic anonymous Supabase session (Anonymous Sign-ins enabled). Client identity comes from nome/whatsapp/email collected in wizard step 1 (`itinerary_answers`). Itineraries can be recovered on another device via the RPC `claim_itineraries_by_contact` (matches email or last 8 phone digits, reassigns `user_id`). Admin logs in with email/password directly on `/admin` (inline form in `AdminRoute.tsx`). `LoginPage.tsx`/`RegisterPage.tsx` exist but are unrouted (kept for possible future use).
+
 ## Architecture
 
 - **`frontend/`** — React 19 + Vite + TypeScript + React Router 7 + Supabase JS
-  - `src/pages/` — WelcomePage, WizardPage, ResultPage, MyItinerariesPage, LoginPage, RegisterPage, AdminPage
+  - `src/pages/` — WelcomePage, WizardPage, ResultPage, MyItinerariesPage, AdminPage (LoginPage/RegisterPage unrouted)
   - `src/components/admin/` — admin panel tabs; `AdminRoute.tsx` / `ProtectedRoute.tsx` guard routes
   - `src/contexts/AuthContext.tsx` — auth state; `src/lib/supabase.ts` — Supabase client
 - **`supabase/`** — backend (Supabase: Auth, PostgreSQL, Edge Functions in Deno)
